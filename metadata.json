@@ -1,0 +1,6 @@
+{
+  "name": "AI智能创作系统",
+  "description": "基于大语言模型的智能创作辅助系统，包含AI对话、多知识库管理、自动化数据采集、人格特征萃取与选题/直接驱动的AI智能文稿创作。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
