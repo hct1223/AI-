@@ -25,9 +25,8 @@ export default function App() {
   // Task Space States
   const [spaces, setSpaces] = useState<TaskSpace[]>([]);
   const [selectedSpaceId, setSelectedSpaceId] = useState<string>("space-1");
-  const [isNewSpaceModalOpen, setIsNewSpaceModalOpen] = useState(false);
+  const [isSidebarAddSpaceOpen, setIsSidebarAddSpaceOpen] = useState(false);
   const [newSpaceName, setNewSpaceName] = useState("");
-  const [newSpaceDesc, setNewSpaceDesc] = useState("");
   const [spaceSubTab, setSpaceSubTab] = useState<'all' | 'folders'>('all');
   const [isUnifiedCreateOpen, setIsUnifiedCreateOpen] = useState(false);
 
@@ -195,7 +194,7 @@ export default function App() {
     }
   };
 
-  const handleCreateSpace = async (name: string, description: string) => {
+  const handleCreateSpace = async (name: string, description: string = "") => {
     try {
       const res = await fetch("/api/spaces", {
         method: "POST",
@@ -205,9 +204,8 @@ export default function App() {
       const newSpace = await res.json();
       setSpaces((prev) => [newSpace, ...prev]);
       setSelectedSpaceId(newSpace.id);
-      setIsNewSpaceModalOpen(false);
+      setIsSidebarAddSpaceOpen(false);
       setNewSpaceName("");
-      setNewSpaceDesc("");
     } catch (e) {
       console.error("Error creating space", e);
     }
@@ -639,20 +637,78 @@ export default function App() {
               <span>知识库管理</span>
             </button>
 
-            <button
-              onClick={() => setActiveTab('task_space')}
-              className={`group relative w-full flex items-center gap-3.5 px-3.5 py-3 rounded-xl text-left text-xs transition-all duration-200 font-medium ${
-                activeTab === 'task_space'
-                  ? 'bg-slate-800/90 text-white shadow-sm ring-1 ring-slate-800/40'
-                  : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
-              }`}
-            >
-              {activeTab === 'task_space' && (
-                <span className="absolute left-0 w-1 h-5/6 bg-indigo-500 rounded-r-full" />
+            <div className="flex flex-col gap-1.5 w-full">
+              <div
+                className={`group relative w-full flex items-center justify-between rounded-xl transition-all duration-200 font-medium ${
+                  activeTab === 'task_space'
+                    ? 'bg-slate-800/90 text-white shadow-sm ring-1 ring-slate-800/40'
+                    : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
+                }`}
+              >
+                <button
+                  onClick={() => setActiveTab('task_space')}
+                  className="flex-1 flex items-center gap-3.5 px-3.5 py-3 text-left text-xs"
+                >
+                  {activeTab === 'task_space' && (
+                    <span className="absolute left-0 w-1 h-5/6 bg-indigo-500 rounded-r-full" />
+                  )}
+                  <LayoutGrid className={`w-4 h-4 shrink-0 transition-all duration-300 ${activeTab === 'task_space' ? 'text-indigo-400 scale-110 drop-shadow-[0_0_8px_rgba(99,102,241,0.4)]' : 'text-slate-500 group-hover:text-slate-350'}`} />
+                  <span>工作空间</span>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsSidebarAddSpaceOpen(!isSidebarAddSpaceOpen);
+                    setActiveTab('task_space');
+                  }}
+                  className="p-1 mr-2 text-slate-500 hover:text-white hover:bg-slate-850 rounded-lg transition"
+                  title="新增工作空间"
+                  id="add-space-sidebar-btn"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {isSidebarAddSpaceOpen && (
+                <div className="mx-2 p-3 bg-slate-900/80 rounded-xl border border-slate-800/60 flex flex-col gap-2 mt-0.5" id="sidebar-add-space-submenu">
+                  <div className="text-[10px] text-slate-400 font-bold tracking-wider mb-1">新增二级菜单: 新建工作空间</div>
+                  <input
+                    type="text"
+                    placeholder="输入工作空间名称..."
+                    value={newSpaceName}
+                    onChange={(e) => setNewSpaceName(e.target.value)}
+                    className="w-full bg-slate-950 text-white text-[11px] px-2.5 py-1.5 rounded-lg border border-slate-800 focus:border-indigo-500 outline-none transition"
+                    id="sidebar-new-space-input"
+                  />
+                  <div className="flex items-center justify-end gap-1.5 mt-1">
+                    <button
+                      onClick={() => {
+                        setIsSidebarAddSpaceOpen(false);
+                        setNewSpaceName("");
+                      }}
+                      className="px-2 py-1 text-[10px] text-slate-400 hover:text-white hover:bg-slate-800 rounded transition font-medium"
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (newSpaceName.trim()) {
+                          handleCreateSpace(newSpaceName.trim());
+                        }
+                      }}
+                      disabled={!newSpaceName.trim()}
+                      className={`px-3 py-1 text-[10px] font-bold rounded transition ${
+                        newSpaceName.trim()
+                          ? "bg-indigo-600 hover:bg-indigo-700 text-white"
+                          : "bg-slate-850 text-slate-600 cursor-not-allowed"
+                      }`}
+                    >
+                      保存
+                    </button>
+                  </div>
+                </div>
               )}
-              <LayoutGrid className={`w-4 h-4 shrink-0 transition-all duration-300 ${activeTab === 'task_space' ? 'text-indigo-400 scale-110 drop-shadow-[0_0_8px_rgba(99,102,241,0.4)]' : 'text-slate-500 group-hover:text-slate-350'}`} />
-              <span>工作空间</span>
-            </button>
+            </div>
           </div>
         </div>
 
@@ -761,13 +817,6 @@ export default function App() {
               <div className="w-72 bg-white rounded-2xl border border-slate-200/80 shadow-sm flex flex-col p-4 shrink-0 h-full overflow-hidden" id="workspace-spaces-sidebar">
                 <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100" id="spaces-sidebar-header">
                   <h4 className="text-xs font-bold text-slate-800 tracking-wider">主创工作空间 ({spaces.length})</h4>
-                  <button
-                    onClick={() => setIsNewSpaceModalOpen(true)}
-                    className="p-1 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition"
-                    title="新建工作空间"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto space-y-2 pr-1" id="spaces-list-scroller">
@@ -906,7 +955,7 @@ export default function App() {
                             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-150 ${
                               spaceSubTab === 'folders'
                                 ? 'bg-slate-900 text-white shadow-md'
-                                : 'hover:bg-slate-150/40 text-slate-500 hover:text-slate-700'
+                                : 'hover:bg-slate-150/40 text-slate-505-hover:text-slate-700'
                             }`}
                             id="tab-folders"
                           >
@@ -950,7 +999,7 @@ export default function App() {
                             onDocArchived={async () => {
                               await fetchKBs();
                               if (selectedKBId) {
-                                await fetchKBDocuments(selectedKBId);
+                                  await fetchKBDocuments(selectedKBId);
                               }
                             }}
                           />
@@ -964,70 +1013,6 @@ export default function App() {
           )}
         </div>
       </main>
-
-      {/* Modal to create a new task space */}
-      {isNewSpaceModalOpen && (
-        <div className="fixed inset-0 z-55 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)' }} id="new-space-modal-overlay">
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl w-full max-w-md overflow-hidden" id="new-space-modal">
-            <div className="p-4 bg-slate-50 border-b border-slate-100 text-left">
-              <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                <Layers className="w-4.5 h-4.5 text-indigo-650" />
-                创建专属工作空间
-              </h3>
-              <p className="text-[10px] text-slate-450 mt-0.5">
-                建立独立的灵感及文案创作沙箱，整合你的采集、调性萃取和生成流水线。
-              </p>
-            </div>
-            
-            <div className="p-5 space-y-4 text-left">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-1.5">工作空间名称 <span className="text-rose-500">*</span></label>
-                <input
-                  type="text"
-                  placeholder="例如：量子前沿科普特刊、旅行爆款文案舱..."
-                  value={newSpaceName}
-                  onChange={(e) => setNewSpaceName(e.target.value)}
-                  className="w-full bg-slate-50 hover:bg-slate-100/50 focus:bg-white text-xs px-3 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-indigo-400 transition"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-1.5">功能空间描述</label>
-                <textarea
-                  placeholder="简述该写作空间的特定研究项目、参考资料库主题及预期创风格调..."
-                  value={newSpaceDesc}
-                  rows={3}
-                  onChange={(e) => setNewSpaceDesc(e.target.value)}
-                  className="w-full bg-slate-50 hover:bg-slate-100/50 focus:bg-white text-xs px-3 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-indigo-400 transition resize-none"
-                />
-              </div>
-            </div>
-
-            <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2 text-xs">
-              <button
-                onClick={() => {
-                  setIsNewSpaceModalOpen(false);
-                  setNewSpaceName("");
-                  setNewSpaceDesc("");
-                }}
-                className="px-3 py-1.5 hover:bg-slate-100 text-slate-500 border border-slate-200 rounded-lg transition font-medium"
-              >
-                取消
-              </button>
-              <button
-                onClick={() => handleCreateSpace(newSpaceName, newSpaceDesc)}
-                disabled={!newSpaceName.trim()}
-                className={`px-4 py-1.5 font-bold rounded-lg transition shadow-sm ${
-                  newSpaceName.trim()
-                    ? "bg-indigo-600 hover:bg-indigo-700 text-white"
-                    : "bg-slate-250 text-slate-400 cursor-not-allowed"
-                }`}
-              >
-                确认创建
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Modal to configure space settings & permissions */}
       {isSpaceSettingsModalOpen && (

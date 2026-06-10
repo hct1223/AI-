@@ -251,6 +251,24 @@ const getInitialData = (): DB => {
     creationTasks: [],
     spaces: [
       {
+        id: "space-default",
+        name: "默认工作空间",
+        description: "这是一个为您自动创建的默认工作空间，用于快速开始您的智能写作与资料管理。",
+        createdAt: new Date("2026-05-01T00:00:00Z").toISOString(),
+        operationPermission: {
+          allowScraping: true,
+          allowPersonaExtraction: true,
+          allowContentCreation: true,
+          allowDeletion: false,
+          roleRequired: 'member'
+        },
+        dataPermission: {
+          visibility: 'isolated',
+          dataClassification: 'internal',
+          allowedKBs: 'all'
+        }
+      },
+      {
         id: "space-1",
         name: "科幻世界宇宙观构建",
         description: "本空间致力于萃取庄严冷峻的硬科幻文风，采集前沿物理与社会学基础，撰写宏大的星系纪元史诗。",

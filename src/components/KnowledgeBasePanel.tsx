@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { FolderPlus, BookOpen, Link, FileText, Trash2, Plus, Calendar, Globe, Upload } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { FolderPlus, BookOpen, Link, FileText, Trash2, Plus, Calendar, Globe, Upload, ArrowLeft } from "lucide-react";
 import { KnowledgeBase, Document } from "../types";
 
 interface KnowledgeBasePanelProps {
@@ -29,6 +29,11 @@ export default function KnowledgeBasePanel({
   const [docTitle, setDocTitle] = useState("");
   const [docContent, setDocContent] = useState("");
   const [isImportingDoc, setIsImportingDoc] = useState(false);
+  const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
+
+  useEffect(() => {
+    setSelectedDoc(null);
+  }, [selectedKBId]);
 
   const activeKB = kbs.find(kb => kb.id === selectedKBId);
 
@@ -242,59 +247,113 @@ export default function KnowledgeBasePanel({
             )}
 
             {/* Documents Scroll Area */}
-            <div className="flex-1 overflow-y-auto space-y-4 pr-1" id="doc-cards-container">
-              {kbDocuments.length === 0 ? (
-                <div className="text-center py-20 bg-slate-50/50 rounded-xl border border-dashed border-slate-200" id="doc-empty-prompt">
-                  <FileText className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                  <p className="text-xs text-slate-500 font-medium">知识库还没有被注入养分</p>
-                  <p className="text-[10px] text-slate-400 mt-1 max-w-sm mx-auto px-6 leading-relaxed">
-                    您可以点击“导入文档记录”来手动输入有价值的素材，或者通过侧边栏前往【数据采集】板块，用自动化爬虫全天候吸取特定网站的关键数据！
-                  </p>
+            {selectedDoc ? (
+              <div className="flex-1 flex flex-col min-h-0 bg-slate-50/50 rounded-xl border border-slate-200/80 p-5 overflow-hidden animate-fadeIn" id="doc-detail-view">
+                <div className="flex items-center justify-between pb-3.5 border-b border-slate-250 shrink-0">
+                  <button
+                    onClick={() => setSelectedDoc(null)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 rounded-lg text-xs font-bold transition shadow-sm"
+                    id="doc-detail-back"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5 text-slate-500" />
+                    返回文献列表
+                  </button>
+                  <span className="text-[10px] text-slate-400 font-medium">
+                    录入时间: {new Date(selectedDoc.createdAt).toLocaleString()}
+                  </span>
                 </div>
-              ) : (
-                kbDocuments.map((doc) => {
-                  const isCrawler = doc.source === "crawler";
-                  return (
-                    <div
-                      key={doc.id}
-                      className="bg-white border border-slate-200 p-5 rounded-xl hover:shadow-md transition space-y-3"
-                      id={`doc-card-${doc.id}`}
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-50 pb-2.5">
-                        <h3 className="font-bold text-slate-800 text-xs md:text-sm flex items-center gap-1.5">
-                          <FileText className="w-4 h-4 text-slate-400 shrink-0" />
-                          {doc.title}
-                        </h3>
-                        {/* Source labels */}
-                        <div className="flex items-center gap-1.5 shrink-0">
+
+                <div className="flex-1 overflow-y-auto pt-4 space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <h3 className="font-extrabold text-slate-800 text-sm md:text-base leading-snug">
+                      {selectedDoc.title}
+                    </h3>
+                    <div className="shrink-0 flex items-center gap-1.5">
+                      {selectedDoc.source === "crawler" ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] px-2.5 py-1 bg-sky-50 text-sky-600 rounded-full font-bold border border-sky-100">
+                          <Globe className="w-3 h-3" /> 数据采集爬虫
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[10px] px-2.5 py-1 bg-amber-50 text-amber-600 rounded-full font-bold border border-amber-100">
+                          <Upload className="w-3 h-3" /> 手工归纳导入
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="bg-white border border-slate-150 rounded-xl p-4 md:p-5 text-slate-700 text-xs md:text-sm leading-relaxed whitespace-pre-wrap font-sans shadow-sm select-text">
+                    {selectedDoc.content || "此文档无正文内容..."}
+                  </div>
+
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium pt-3.5 border-t border-slate-200">
+                    <span className="truncate pr-4" title={selectedDoc.sourceDetail}>来源渠道: {selectedDoc.sourceDetail || "本地录入"}</span>
+                    {selectedDoc.source === "crawler" && selectedDoc.sourceDetail.startsWith("http") && (
+                      <a
+                        href={selectedDoc.sourceDetail}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-indigo-600 hover:underline shrink-0"
+                      >
+                        访问源链接
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 overflow-y-auto space-y-2.5 pr-1" id="doc-cards-container">
+                {kbDocuments.length === 0 ? (
+                  <div className="text-center py-20 bg-slate-50/50 rounded-xl border border-dashed border-slate-200" id="doc-empty-prompt">
+                    <FileText className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                    <p className="text-xs text-slate-500 font-medium">知识库还没有被注入养分</p>
+                    <p className="text-[10px] text-slate-400 mt-1 max-w-sm mx-auto px-6 leading-relaxed">
+                      您可以点击“导入文档记录”来手动输入有价值的素材，或者通过侧边栏前往【数据采集】板块，用自动化爬虫全天候吸取特定网站的关键数据！
+                    </p>
+                  </div>
+                ) : (
+                  kbDocuments.map((doc) => {
+                    const isCrawler = doc.source === "crawler";
+                    return (
+                      <div
+                        key={doc.id}
+                        onClick={() => setSelectedDoc(doc)}
+                        className="bg-white border border-slate-200 p-4 rounded-xl hover:border-indigo-300 hover:shadow-sm cursor-pointer transition-all duration-200 flex flex-col md:flex-row md:items-center justify-between gap-3 group"
+                        id={`doc-card-${doc.id}`}
+                      >
+                        <div className="flex items-start gap-3 min-w-0 flex-1">
+                          <span className={`p-1.5 rounded-lg shrink-0 mt-0.5 ${isCrawler ? 'bg-sky-50 text-sky-500 group-hover:bg-sky-100' : 'bg-amber-50 text-amber-500 group-hover:bg-amber-100'} transition-all`}>
+                            <FileText className="w-4 h-4 animate-pulse-slow" />
+                          </span>
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <h3 className="font-bold text-slate-700 text-xs md:text-sm truncate group-hover:text-indigo-600 transition-colors">
+                              {doc.title}
+                            </h3>
+                            <div className="flex items-center gap-2 text-[10.5px] text-slate-400 font-medium">
+                              <span className="truncate max-w-[220px] md:max-w-md" title={doc.sourceDetail}>
+                                来源: {doc.sourceDetail || "手动输入"}
+                              </span>
+                              <span>•</span>
+                              <span>{new Date(doc.createdAt).toLocaleString()}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 self-end md:self-center pl-10 md:pl-0">
                           {isCrawler ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 bg-sky-50 text-sky-600 rounded-full font-medium">
-                              <Globe className="w-3 h-3" /> 数据采集爬虫
+                            <span className="text-[9px] px-2.5 py-0.5 bg-sky-50 text-sky-600 border border-sky-100 rounded-lg font-bold">
+                              采集爬虫
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 bg-amber-50 text-amber-600 rounded-full font-medium">
-                              <Upload className="w-3 h-3" /> 手工归纳导入
+                            <span className="text-[9px] px-2.5 py-0.5 bg-amber-50 text-amber-600 border border-amber-100 rounded-lg font-bold">
+                              手工导入
                             </span>
                           )}
                         </div>
                       </div>
-
-                      <div className="text-xs text-slate-600 leading-relaxed font-normal whitespace-pre-wrap max-h-48 overflow-y-auto bg-slate-50 rounded-lg p-3 border border-slate-100">
-                        {doc.content}
-                      </div>
-
-                      <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1">
-                        <div className="flex items-center gap-1.5 truncate pr-4">
-                          {isCrawler ? <Link className="w-3 h-3 text-sky-400 shrink-0" /> : <FileText className="w-3 h-3 text-amber-400 shrink-0" />}
-                          <span className="truncate" title={doc.sourceDetail}>来源: {doc.sourceDetail}</span>
-                        </div>
-                        <span className="shrink-0">{new Date(doc.createdAt).toLocaleDateString()}录入</span>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
           </>
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-center max-w-sm mx-auto" id="doc-unselected-prompt">
