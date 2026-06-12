@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import { 
   Plus, Search, Globe, BrainCircuit, PenTool, Database, Layers, CheckCircle, 
-  Loader2, AlertCircle, XCircle, Calendar, ArrowRight, Clipboard, ChevronRight, 
-  Terminal, Play, Trash2, StopCircle, RotateCcw, Lock, ShieldAlert, Award, 
-  Archive, Check, Copy, FileText, Info, HelpCircle
+  Loader2, AlertCircle, XCircle, Calendar, ArrowRight, ChevronRight, ChevronLeft,
+  Terminal, Trash2, StopCircle, RotateCcw, Award, Archive, Check, Copy, 
+  Info, Eye, EyeOff, LayoutGrid, FileText, Play
 } from "lucide-react";
 import { 
   CollectionTask, PersonaTask, CreationTask, KnowledgeBase, Persona, Document 
@@ -66,21 +66,18 @@ export default function AllTasksPanel({
   onSelectTopic,
   onArchiveDoc
 }: AllTasksPanelProps) {
-  // Navigation & Search States
+  // Navigation & Search Filters
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "scraper" | "persona" | "creation">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "running" | "completed" | "failed">("all");
 
-  // Selection/Detail States
-  const [selectedTask, setSelectedTask] = useState<CombinedTask | null>(null);
-  
-  // Unified Creation Dialog States
-  const [localCreateOpen, setLocalCreateOpen] = useState(false);
-  const isCreateOpen = externalCreateOpen !== undefined ? externalCreateOpen : localCreateOpen;
-  const setIsCreateOpen = setExternalCreateOpen !== undefined ? setExternalCreateOpen : setLocalCreateOpen;
+  // Multi-column status togglers inside task details page
+  const [colInfoOpen, setColInfoOpen] = useState(true);
+  const [colStatusOpen, setColStatusOpen] = useState(true);
+  const [colResultOpen, setColResultOpen] = useState(true);
 
-  const [creationStep, setCreationStep] = useState<1 | 2>(1);
-  const [chosenTaskType, setChosenTaskType] = useState<"scraper" | "persona" | "creation" | null>(null);
+  // Selected existing or draft task details
+  const [selectedTask, setSelectedTask] = useState<CombinedTask | null>(null);
 
   // Form States - Scraping Task
   const [scrapName, setScrapName] = useState("");
@@ -99,24 +96,23 @@ export default function AllTasksPanel({
   const [creatPersonaId, setCreatPersonaId] = useState("");
   const [creatWebSearch, setCreatWebSearch] = useState(false);
 
-  // Form states - Submitting indicator
-  const [submitting, setSubmitting] = useState(false);
+  // Copy helper states
+  const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
+  const [archiveKbId, setArchiveKbId] = useState("");
+  const [archiveSuccess, setArchiveSuccess] = useState(false);
 
-  // Selector Nested Popups
+  // Nested Document selector states
   const [isKbDocsSelectorOpen, setIsKbDocsSelectorOpen] = useState(false);
   const [tempSelectedDocIds, setTempSelectedDocIds] = useState<string[]>([]);
   const [tempSelectedKbIds, setTempSelectedKbIds] = useState<string[]>([]);
   const [activeKbId, setActiveKbId] = useState<string>("");
 
-  // Detail Modal Interaction States
-  const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
-  const [archiveKbId, setArchiveKbId] = useState("");
-  const [archiveSuccess, setArchiveSuccess] = useState(false);
-  
-  // Log Terminal Auto-scroll ref
+  const [submitting, setSubmitting] = useState(false);
+  const [awaitingNewTask, setAwaitingNewTask] = useState<"scraper" | "persona" | "creation" | null>(null);
+
   const logTerminalRef = useRef<HTMLDivElement | null>(null);
 
-  // Auto-set selected default collection KB for scraper
+  // Default selection set
   useEffect(() => {
     if (kbs.length > 0) {
       if (!scrapKbId) setScrapKbId(kbs[0].id);
@@ -124,9 +120,9 @@ export default function AllTasksPanel({
     }
   }, [kbs]);
 
-  // Sync active task details to pick up background polling updates
+  // Sync background polling update on tasks list
   useEffect(() => {
-    if (selectedTask) {
+    if (selectedTask && !selectedTask.id.startsWith("draft-")) {
       if (selectedTask.taskType === "scraper") {
         const matching = scraperTasks.find(t => t.id === selectedTask.id);
         if (matching) setSelectedTask({ ...matching, taskType: "scraper" });
@@ -140,24 +136,178 @@ export default function AllTasksPanel({
     }
   }, [scraperTasks, personaTasks, creationTasks]);
 
-  // Handle auto-scroll of logs when logs extend
+  // Auto scroll logs term
   useEffect(() => {
     if (logTerminalRef.current) {
       logTerminalRef.current.scrollTop = logTerminalRef.current.scrollHeight;
     }
   }, [selectedTask]);
 
-  // Map tasks together
+  // Listen to new tasks list for auto-transition
+  useEffect(() => {
+    if (awaitingNewTask) {
+      if (awaitingNewTask === "scraper" && scraperTasks.length > 0) {
+        const spaceScrapers = scraperTasks.filter(t => (t.spaceId || "space-default") === selectedSpaceId);
+        if (spaceScrapers.length > 0) {
+          const sorted = [...spaceScrapers].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          setSelectedTask({ ...sorted[0], taskType: "scraper" });
+          setAwaitingNewTask(null);
+        }
+      } else if (awaitingNewTask === "persona" && personaTasks.length > 0) {
+        const spacePersonas = personaTasks.filter(t => (t.spaceId || "space-default") === selectedSpaceId);
+        if (spacePersonas.length > 0) {
+          const sorted = [...spacePersonas].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          setSelectedTask({ ...sorted[0], taskType: "persona" });
+          setAwaitingNewTask(null);
+        }
+      } else if (awaitingNewTask === "creation" && creationTasks.length > 0) {
+        const spaceCreations = creationTasks.filter(t => (t.spaceId || "space-default") === selectedSpaceId);
+        if (spaceCreations.length > 0) {
+          const sorted = [...spaceCreations].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          setSelectedTask({ ...sorted[0], taskType: "creation" });
+          setAwaitingNewTask(null);
+        }
+      }
+    }
+  }, [scraperTasks, personaTasks, creationTasks, awaitingNewTask, selectedSpaceId]);
+
+  // Launch a draft task state
+  const handleInitiateDraft = (type: "scraper" | "persona" | "creation") => {
+    setScrapName("");
+    setScrapUrl("");
+    setScrapPrompt("");
+    if (kbs.length > 0) setScrapKbId(kbs[0].id);
+
+    setPersName("");
+    setPersKbIds([]);
+
+    setCreatType("direct");
+    setCreatTheme("");
+    setCreatDocIds([]);
+    setCreatPersonaId("");
+    setCreatWebSearch(false);
+
+    // Set column expand/collapses to default values on load
+    setColInfoOpen(true);
+    setColStatusOpen(true);
+    setColResultOpen(true);
+
+    if (type === "scraper") {
+      setSelectedTask({
+        id: "draft-scraper",
+        name: "",
+        url: "",
+        prompt: "",
+        kbId: kbs[0]?.id || "",
+        status: "pending",
+        docsScrapedCount: 0,
+        logs: ["正在等待输入参数配置..."],
+        createdAt: new Date().toISOString(),
+        taskType: "scraper"
+      });
+    } else if (type === "persona") {
+      setSelectedTask({
+        id: "draft-persona",
+        name: "",
+        kbIds: [],
+        status: "pending",
+        logs: ["正在筹备语料参数..."],
+        createdAt: new Date().toISOString(),
+        taskType: "persona"
+      });
+    } else if (type === "creation") {
+      setSelectedTask({
+        id: "draft-creation",
+        type: "direct",
+        title: "",
+        theme: "",
+        kbDocIds: [],
+        useWebSearch: false,
+        status: "pending",
+        logs: ["准备文稿立意大纲..."],
+        createdAt: new Date().toISOString(),
+        taskType: "creation"
+      });
+    }
+  };
+
+  // Submission
+  const handleSubmitTaskDraft = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!selectedTask) return;
+    const taskType = selectedTask.taskType;
+    setSubmitting(true);
+    try {
+      if (taskType === 'scraper') {
+        if (!scrapName.trim() || !scrapUrl.trim() || !scrapKbId) return;
+        await onCreateScraperTask(scrapName, scrapUrl, scrapPrompt, scrapKbId);
+      } else if (taskType === 'persona') {
+        if (!persName.trim() || persKbIds.length === 0) return;
+        await onCreatePersonaTask(persName, persKbIds);
+      } else if (taskType === 'creation') {
+        if (!creatTheme.trim()) return;
+        await onCreateCreationTask({
+          type: creatType,
+          theme: creatTheme,
+          kbDocIds: creatDocIds,
+          personaId: creatPersonaId || undefined,
+          useWebSearch: creatWebSearch
+        });
+      }
+      setAwaitingNewTask(taskType);
+    } catch (err) {
+      console.error(err);
+      alert("创建任务并执行失败，请检查参数输入！");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Action callback forwards
+  const handleSelectTopicSubmit = async (taskId: string, topic: string) => {
+    try {
+      await onSelectTopic(taskId, topic);
+      const updated = creationTasks.find(t => t.id === taskId);
+      if (updated) {
+        setSelectedTask({ ...updated, status: 'writing', selectedTopic: topic, taskType: 'creation' });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleCopyText = (text: string, taskId: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedTaskId(taskId);
+      setTimeout(() => setCopiedTaskId(null), 2000);
+    });
+  };
+
+  const handleArchiveSubmit = async (taskId: string) => {
+    if (!archiveKbId) return;
+    try {
+      await onArchiveDoc(taskId, archiveKbId);
+      setArchiveSuccess(true);
+      setTimeout(() => {
+        setArchiveSuccess(false);
+        setArchiveKbId("");
+      }, 3000);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Render lists of active space tasks
   const activeScraper = scraperTasks
-    .filter(t => (t.spaceId || "space-1") === selectedSpaceId)
+    .filter(t => (t.spaceId || "space-default") === selectedSpaceId)
     .map(t => ({ ...t, taskType: 'scraper' as const }));
 
   const activePersona = personaTasks
-    .filter(t => (t.spaceId || "space-1") === selectedSpaceId)
+    .filter(t => (t.spaceId || "space-default") === selectedSpaceId)
     .map(t => ({ ...t, taskType: 'persona' as const }));
 
   const activeCreation = creationTasks
-    .filter(t => (t.spaceId || "space-1") === selectedSpaceId)
+    .filter(t => (t.spaceId || "space-default") === selectedSpaceId)
     .map(t => ({ ...t, taskType: 'creation' as const }));
 
   const allFilteredTasks = [
@@ -165,17 +315,14 @@ export default function AllTasksPanel({
     ...activePersona,
     ...activeCreation
   ].filter(t => {
-    // 1. Search filter
     const titleText = t.taskType === 'creation' 
       ? (t.selectedTopic || t.title || t.theme || "") 
       : t.name;
     const matchesSearch = titleText.toLowerCase().includes(searchQuery.toLowerCase());
     if (!matchesSearch) return false;
 
-    // 2. Type filter
     if (typeFilter !== 'all' && t.taskType !== typeFilter) return false;
 
-    // 3. Status filter
     if (statusFilter !== 'all') {
       const isRunning = ['pending', 'scraping', 'extracting', 'researching', 'writing', 'suggesting'].includes(t.status);
       const isCompleted = t.status === 'completed';
@@ -185,11 +332,10 @@ export default function AllTasksPanel({
       if (statusFilter === 'completed' && !isCompleted) return false;
       if (statusFilter === 'failed' && !isFailed) return false;
     }
-
     return true;
   }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  // Task Status Badges helper method
+  // Badge rendering builders
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'completed':
@@ -204,24 +350,24 @@ export default function AllTasksPanel({
       case 'writing':
         return (
           <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded border border-indigo-150/60 animate-pulse">
-            <Loader2 className="w-3 h-3 animate-spin" /> 运行中...
+            <Loader2 className="w-3 h-3 animate-spin" /> 执行中...
           </span>
         );
       case 'suggesting':
         return (
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-amber-50 text-amber-600 px-2 py-0.5 rounded border border-amber-205 animate-pulse">
-            <Loader2 className="w-3 h-3 animate-spin" /> 各方选题中
+          <span className="inline-flex items-center gap-1 text-[10px] font-black bg-amber-100 text-amber-850 px-2 py-0.5 rounded border border-amber-350 animate-pulse">
+            ⚠️ 待人工介入
           </span>
         );
       case 'failed':
         return (
           <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-rose-50 text-rose-600 px-2 py-0.5 rounded border border-rose-100">
-            <AlertCircle className="w-3 h-3" /> 执行失败
+            <AlertCircle className="w-3 h-3" /> 运行失败
           </span>
         );
       case 'cancelled':
         return (
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded border border-slate-205">
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded border border-slate-200">
             <XCircle className="w-3 h-3" /> 已取消
           </span>
         );
@@ -234,7 +380,6 @@ export default function AllTasksPanel({
     }
   };
 
-  // Type Badges helper method
   const getTypeBadge = (taskType: "scraper" | "persona" | "creation") => {
     switch (taskType) {
       case "scraper":
@@ -258,960 +403,207 @@ export default function AllTasksPanel({
     }
   };
 
-  // Copy helper
-  const handleCopyText = (text: string, taskId: string) => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopiedTaskId(taskId);
-      setTimeout(() => setCopiedTaskId(null), 2000);
-    });
-  };
+  // If a task (either draft or existing) is selected, render the magnificent 3-column workspaces
+  if (selectedTask) {
+    const isDraft = selectedTask.id.startsWith("draft-");
 
-  // Archive helper
-  const handleArchiveSubmit = async (taskId: string) => {
-    if (!archiveKbId) return;
-    try {
-      await onArchiveDoc(taskId, archiveKbId);
-      setArchiveSuccess(true);
-      setTimeout(() => {
-        setArchiveSuccess(false);
-        setArchiveKbId("");
-      }, 3000);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  // Creation Submits
-  const handleCreateSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!chosenTaskType) return;
-    setSubmitting(true);
-    try {
-      if (chosenTaskType === 'scraper') {
-        if (!scrapName.trim() || !scrapUrl.trim() || !scrapKbId) return;
-        await onCreateScraperTask(scrapName, scrapUrl, scrapPrompt, scrapKbId);
-        // Reset
-        setScrapName("");
-        setScrapUrl("");
-        setScrapPrompt("");
-      } else if (chosenTaskType === 'persona') {
-        if (!persName.trim() || persKbIds.length === 0) return;
-        await onCreatePersonaTask(persName, persKbIds);
-        // Reset
-        setPersName("");
-        setPersKbIds([]);
-      } else if (chosenTaskType === 'creation') {
-        if (!creatTheme.trim()) return;
-        await onCreateCreationTask({
-          type: creatType,
-          theme: creatTheme,
-          kbDocIds: creatDocIds,
-          personaId: creatPersonaId || undefined,
-          useWebSearch: creatWebSearch
-        });
-        // Reset
-        setCreatTheme("");
-        setCreatDocIds([]);
-        setCreatPersonaId("");
-        setCreatWebSearch(false);
-      }
-      setIsCreateOpen(false);
-      setCreationStep(1);
-      setChosenTaskType(null);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleSelectTopicSubmit = async (taskId: string, topic: string) => {
-    try {
-      await onSelectTopic(taskId, topic);
-      // Toggle details overlay sync
-      const updated = creationTasks.find(t => t.id === taskId);
-      if (updated) {
-        setSelectedTask({ ...updated, status: 'writing', selectedTopic: topic, taskType: 'creation' });
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  return (
-    <div className="flex flex-col h-full bg-slate-50 overflow-hidden p-6 text-slate-800" id="all-tasks-panel">
-      
-      {/* 1. Header with Stats & Actions */}
-      <div className="flex items-center justify-between gap-4 mb-4 pb-4 border-b border-slate-200/60 shrink-0" id="all-tasks-header">
-        <div className="text-left">
-          <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-            <Layers className="w-4.5 h-4.5 text-indigo-650" />
-            统一创意工作空间总揽
-          </h2>
-          <p className="text-[11px] text-slate-400 mt-1 font-normal">
-            融合该空间内【数据采集】、【语调语格萃取】与【智能AI创稿】所有类型流水线进程，查看全貌状态及完成的创作。
-          </p>
-        </div>
-
-        <button
-          onClick={() => {
-            setCreationStep(1);
-            setChosenTaskType(null);
-            setIsCreateOpen(true);
-          }}
-          className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shadow-md shadow-indigo-100 shrink-0"
-          id="global-create-task-btn"
-        >
-          <Plus className="w-4 h-4" />
-          <span>新建空间任务</span>
-        </button>
-      </div>
-
-      {/* 2. Unified List Card container */}
-      <div className="flex-1 bg-white rounded-2xl border border-slate-200/80 shadow-sm flex flex-col overflow-hidden p-5" id="all-tasks-content">
+    return (
+      <div className="flex flex-col h-full bg-slate-55 overflow-hidden text-slate-850 sm:rounded-2xl border border-slate-200" id="task-details-workspace-view">
         
-        {/* Filters bar */}
-        <div className="flex flex-col md:flex-row gap-3 items-center justify-between border-b border-slate-100 pb-4 mb-4 shrink-0" id="all-tasks-filters">
-          <div className="flex flex-wrap gap-2 items-center" id="filter-type-toggles">
-            <span className="text-[10px] font-bold text-slate-400 uppercase select-none">任务类型:</span>
-            {[
-              { id: 'all', label: '全部列表' },
-              { id: 'scraper', label: '数据采集' },
-              { id: 'persona', label: '人格特征' },
-              { id: 'creation', label: '智能创作' }
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setTypeFilter(tab.id as any)}
-                className={`px-3 py-1 text-[10px] font-bold rounded-lg transition ${
-                  typeFilter === tab.id
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200/60'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl shrink-0" id="filter-status-toggles">
-            {[
-              { id: 'all', label: '全部状态' },
-              { id: 'running', label: '进行中' },
-              { id: 'completed', label: '已完结' },
-              { id: 'failed', label: '已失败' }
-            ].map(st => (
-              <button
-                key={st.id}
-                onClick={() => setStatusFilter(st.id as any)}
-                className={`px-3 py-1 text-[10px] font-bold rounded-lg transition ${
-                  statusFilter === st.id
-                    ? 'bg-white text-slate-800 shadow-3xs'
-                    : 'text-slate-500 hover:text-slate-705'
-                }`}
-              >
-                {st.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Search Input bar */}
-        <div className="mb-4 shrink-0" id="all-tasks-search-bar">
-          <div className="relative">
-            <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-              <Search className="h-3.5 w-3.5 text-slate-400" />
-            </span>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="按任务标题、内容立意、主旨或者语流线检索任务名称..."
-              className="w-full bg-slate-50 hover:bg-slate-100/30 focus:bg-white border border-slate-205 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-100 rounded-xl pl-9 pr-3 py-2 text-xs outline-none transition"
-            />
-          </div>
-        </div>
-
-        {/* List of Tasks Scroll View */}
-        <div className="flex-1 overflow-y-auto space-y-3.5 pr-1" id="all-tasks-results-list">
-          {allFilteredTasks.length === 0 ? (
-            <div className="bg-slate-50/20 rounded-2xl border border-dashed border-slate-200 py-24 text-center flex flex-col justify-center items-center h-full" id="all-tasks-empty">
-              <Layers className="w-10 h-10 text-slate-350 mb-2.5" />
-              <p className="text-xs font-bold text-slate-650">在这个维度里尚无匹配的智能任务迹象</p>
-              <p className="text-[10px] text-slate-400 mt-1 max-w-sm">
-                建议消除筛选偏好、搜索词，或者立刻在右上角触发 <b>“新建空间任务”</b> 自如开天辟地。
-              </p>
-            </div>
-          ) : (
-            allFilteredTasks.map((t) => {
-              const nameText = t.taskType === 'creation'
-                ? (t.selectedTopic || t.title || t.theme || "智慧AI内容创作室")
-                : t.name;
-
-              return (
-                <div
-                  key={t.id}
-                  onClick={() => setSelectedTask(t)}
-                  className="p-4 rounded-xl border border-slate-150/70 bg-white hover:border-indigo-200 hover:bg-slate-50/40 cursor-pointer transition flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm text-left"
-                  id={`all-task-item-${t.id}`}
-                >
-                  <div className="space-y-1.5 flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {getTypeBadge(t.taskType)}
-                      <h3 className="font-bold text-slate-800 text-xs md:text-sm truncate max-w-lg">{nameText}</h3>
-                      <span className="shrink-0">{getStatusBadge(t.status)}</span>
-                    </div>
-
-                    <div className="text-[11px] text-slate-500 font-normal space-y-0.5 pl-1 leading-relaxed">
-                      {t.taskType === 'scraper' && (
-                        <p className="truncate"><span className="text-slate-450">抓取地址:</span> <span className="font-mono text-indigo-650">{t.url}</span></p>
-                      )}
-                      {t.taskType === 'persona' && (
-                        <p className="truncate">
-                          <span className="text-slate-450">语料知识范围:</span> <span className="text-slate-700 font-medium">包含 {(t.kbIds || []).length} 个特定的语流知识库和多篇文章语料</span>
-                        </p>
-                      )}
-                      {t.taskType === 'creation' && (
-                        <p className="truncate">
-                          <span className="text-slate-450">创作原词大纲:</span> <span className="text-indigo-605">{t.theme}</span>
-                          {t.personaId && (
-                            <span className="ml-2 font-semibold text-slate-600 bg-slate-100 px-1 py-0.5 rounded text-[9.5px]">
-                              使用调性 - {personas.find(p => p.id === t.personaId)?.name || '未名人格'}
-                            </span>
-                          )}
-                        </p>
-                      )}
-                      <p className="text-[10px] text-slate-400 font-normal">
-                        触发于: {new Date(t.createdAt).toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0 md:justify-end">
-                    <span className="text-[11px] text-indigo-500 font-bold hover:underline py-1 px-1.5 flex items-center gap-1">
-                      <span>详情</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </span>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-
-      {/* 3. Detailed Modal Drawer depending on Task Type */}
-      {selectedTask && (
-        <div className="fixed inset-0 z-55 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)' }} id="task-detail-overlay">
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden max-h-[90vh] text-left" id="task-detail-modal">
+        {/* Workspace Toolbar Header */}
+        <div className="bg-white p-4 border-b border-slate-200 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setSelectedTask(null)}
+              className="flex items-center gap-1 text-[11px] font-bold bg-white border border-slate-200 hover:bg-slate-50 hover:text-slate-900 rounded-lg px-2.5 py-1.5 transition text-slate-700"
+              id="detail-back-button"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              <span>返回列表</span>
+            </button>
+            <div className="h-4 w-[1px] bg-slate-200" />
             
-            {/* Modal Header */}
-            <div className="p-4 bg-slate-50 border-b border-slate-150 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="p-1.5 bg-indigo-100 text-indigo-700 rounded-lg shrink-0">
-                  {selectedTask.taskType === 'scraper' && <Globe className="w-5 h-5 text-indigo-600" />}
-                  {selectedTask.taskType === 'persona' && <BrainCircuit className="w-5 h-5 text-indigo-600" />}
-                  {selectedTask.taskType === 'creation' && <PenTool className="w-5 h-5 text-indigo-600" />}
-                </div>
-                <div>
-                  <h3 className="text-xs font-bold text-slate-850 flex items-center gap-2">
-                    {getTypeBadge(selectedTask.taskType)} 
-                    <span>
-                      {selectedTask.taskType === 'creation' 
-                        ? (selectedTask.selectedTopic || selectedTask.title || "创作大作考镜详情") 
-                        : selectedTask.name
-                      }
-                    </span>
-                  </h3>
-                  <p className="text-[9.5px] text-slate-450 mt-1">
-                    创建于: {new Date(selectedTask.createdAt).toLocaleString()} | 流水标签: <span className="font-mono">{selectedTask.id}</span>
-                  </p>
-                </div>
+            <div className="text-left">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs bg-slate-100 text-indigo-600 font-bold border border-slate-200 px-2 py-0.5 rounded">
+                  {isDraft ? "新任务构建配置" : `任务详情: ${selectedTask.id}`}
+                </span>
+                <span className="truncate max-w-sm text-xs font-black text-slate-800">
+                  {isDraft ? `筹备新 ${getTypeBadge(selectedTask.taskType).props.children[1]} 流水` : (selectedTask.taskType === 'creation' ? (selectedTask.selectedTopic || selectedTask.title) : selectedTask.name)}
+                </span>
+                {!isDraft && getStatusBadge(selectedTask.status)}
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedTask(null)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 hover:bg-slate-200/50 rounded-lg transition"
-              >
-                <XCircle className="w-4.5 h-4.5" />
-              </button>
             </div>
+          </div>
 
-            {/* Modal Scroll Content */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-6" id="task-detail-content-frame">
-              
-              {/* ==================== A. SCRAPER TASK DETAIL ==================== */}
-              {selectedTask.taskType === 'scraper' && (
-                <div className="space-y-4" id="scraper-task-detail">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div className="p-3.5 bg-slate-50 border border-slate-150 rounded-xl select-none">
-                      <span className="block text-[9.5px] text-slate-400 font-bold uppercase tracking-wider">采集数据源链接</span>
-                      <a href={selectedTask.url} target="_blank" rel="noreferrer" className="block text-[11px] font-bold text-indigo-600 hover:underline mt-1 truncate">
-                        {selectedTask.url}
-                      </a>
-                    </div>
-                    <div className="p-3.5 bg-slate-50 border border-slate-150 rounded-xl select-none">
-                      <span className="block text-[9.5px] text-slate-400 font-bold uppercase tracking-wider">导入定位知识库</span>
-                      <span className="block text-xs font-bold text-slate-800 mt-1 truncate">
-                        {kbs.find(kb => kb.id === selectedTask.kbId)?.name || "默认知识库"}
-                      </span>
-                    </div>
-                    <div className="p-3.5 bg-slate-50 border border-slate-150 rounded-xl select-none">
-                      <span className="block text-[9.5px] text-slate-400 font-bold uppercase tracking-wider">成功落库文献篇章</span>
-                      <span className="block text-xs font-bold text-slate-800 mt-1">
-                        ✨ {selectedTask.docsScrapedCount ?? 0} 篇
-                      </span>
-                    </div>
-                  </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-slate-500 hidden md:inline">支持双击或者使用每个分栏右上角 [x/展开] 手动切换视窗隐藏</span>
+          </div>
+        </div>
 
-                  {selectedTask.prompt && (
-                    <div className="p-3.5 bg-amber-50/10 border border-amber-200/40 rounded-xl text-left">
-                      <h4 className="text-[10px] font-bold text-amber-800 flex items-center gap-1.5">
-                        <Info className="w-3.5 h-3.5 text-amber-505" />
-                        <span>抓取文献加工清洗指令:</span>
-                      </h4>
-                      <p className="text-[10.5px] text-slate-700 font-normal mt-1 leading-relaxed">
-                        {selectedTask.prompt}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Logs Terminal */}
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-bold text-slate-600 flex items-center gap-1.5">
-                      <Terminal className="w-4 h-4 text-indigo-500" />
-                      <span>沙箱引擎采集底层执行日志 :</span>
-                    </label>
-                    <div 
-                      ref={logTerminalRef}
-                      className="bg-slate-950 rounded-xl p-4 font-mono text-[10.5px] text-indigo-100 border border-slate-900 h-56 overflow-y-auto leading-normal text-left"
-                    >
-                      {(!selectedTask.logs || selectedTask.logs.length === 0) ? (
-                        <p className="text-slate-500 italic">正在筹备虚拟抓取终端，静候日志输出...</p>
-                      ) : (
-                        selectedTask.logs.map((log, index) => (
-                          <div key={index} className="border-b border-slate-900 pb-0.5 mb-0.5">
-                            <span className="text-slate-550 mr-2">[{index + 1}]</span>
-                            <span>{log}</span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
+        {/* 3 Columns Flex Container */}
+        <div className="flex-1 flex min-h-0 overflow-hidden relative" id="task-detail-3columns-layout">
+          
+          {/* ====================================================
+              COLUMN 1: TASK INFORMATION (LEFT)
+             ==================================================== */}
+          {colInfoOpen ? (
+            <div className="flex-1 min-w-0 border-r border-slate-200 bg-white flex flex-col h-full overflow-hidden transition-all duration-300">
+              <div className="p-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2 text-slate-705 font-bold text-xs select-none">
+                  <Database className="w-4 h-4 text-slate-500" />
+                  <span>[01] 任务参数与信息</span>
                 </div>
-              )}
-
-              {/* ==================== B. PERSONA TASK DETAIL ==================== */}
-              {selectedTask.taskType === 'persona' && (
-                <div className="space-y-5" id="persona-task-detail">
-                  <div className="bg-slate-50 p-4 border border-slate-150 rounded-xl">
-                    <h4 className="text-[11px] font-bold text-slate-650 mb-2">反向调性深度解析语料来源</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedTask.kbIds && selectedTask.kbIds.map(kbId => {
-                        const kbName = kbs.find(k => k.id === kbId)?.name || '未知知识库';
-                        return (
-                          <span key={kbId} className="inline-flex items-center gap-1 bg-white border border-slate-205 text-[10px] pointer-events-none px-2 py-1 rounded shadow-3xs font-semibold text-slate-700">
-                            <Database className="w-3 h-3 text-emerald-500" /> {kbName}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* If training has successfully completed, optionally display the resulting persona details! */}
-                  {selectedTask.status === 'completed' && selectedTask.personaId && (() => {
-                    const resultingPersona = personas.find(p => p.id === selectedTask.personaId);
-                    if (resultingPersona) {
-                      return (
-                        <div className="border border-emerald-150/80 rounded-2xl p-5 bg-emerald-50/5/5 text-slate-800 space-y-4" id="trained-persona-showcase">
-                          <div className="flex justify-between items-start border-b border-emerald-100 pb-2">
-                            <div className="text-left">
-                              <h4 className="text-xs font-bold text-emerald-800 flex items-center gap-2">
-                                <Award className="w-4 h-4 text-emerald-600" />
-                                萃成调性人设: {resultingPersona.name}
-                              </h4>
-                              <p className="text-[10px] text-slate-400 mt-1 font-normal">
-                                {resultingPersona.description}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                              <span className="text-[10px] font-bold text-slate-400 uppercase">语气态度 (Tone)</span>
-                              <p className="text-[11px] bg-slate-50 border border-slate-150 p-2.5 rounded-lg text-slate-700 leading-relaxed font-semibold">
-                                {resultingPersona.extractedTraits.tone}
-                              </p>
-                            </div>
-                            <div className="space-y-1">
-                              <span className="text-[10px] font-bold text-slate-400 uppercase">修辞与文字笔触 (Style)</span>
-                              <p className="text-[11px] bg-slate-50 border border-slate-150 p-2.5 rounded-lg text-slate-700 leading-relaxed font-semibold">
-                                {resultingPersona.extractedTraits.writingStyle}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="space-y-1.5">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase block">核心词汇/切口频率标签</span>
-                            <div className="flex flex-wrap gap-1.5">
-                              {resultingPersona.extractedTraits.keywords.map((kw, idx) => (
-                                <span key={idx} className="text-[10px] font-bold font-mono bg-indigo-50 text-indigo-700 border border-indigo-150/50 px-2 py-0.5 rounded">
-                                  #{kw}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-
-                          {resultingPersona.extractedTraits.samplePassage && (
-                            <div className="space-y-1">
-                              <span className="text-[10px] font-bold text-slate-400 uppercase">典型模拟拟作片断展示</span>
-                              <div className="p-3 bg-slate-80 text-[10.5px] italic text-slate-650 leading-relaxed font-normal border-l-4 border-slate-400 rounded-r-lg max-h-32 overflow-y-auto bg-slate-50/50">
-                                "{resultingPersona.extractedTraits.samplePassage}"
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    }
-                    return null;
-                  })()}
-
-                  {/* Logs Terminal */}
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-bold text-slate-600 flex items-center gap-1.5">
-                      <Terminal className="w-4 h-4 text-emerald-500" />
-                      <span>多维语感反向解密引擎日志 :</span>
-                    </label>
-                    <div 
-                      ref={logTerminalRef}
-                      className="bg-slate-950 rounded-xl p-4 font-mono text-[10.5px] text-emerald-200 border border-slate-900 h-44 overflow-y-auto leading-normal text-left"
-                    >
-                      {(!selectedTask.logs || selectedTask.logs.length === 0) ? (
-                        <p className="text-slate-500 italic">反向语核正在加载语料特征，静候日志分析...</p>
-                      ) : (
-                        selectedTask.logs.map((log, index) => (
-                          <div key={index} className="border-b border-slate-900 pb-0.5 mb-0.5">
-                            <span className="text-slate-550 mr-2">[{index + 1}]</span>
-                            <span>{log}</span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* ==================== C. CREATION TASK DETAIL ==================== */}
-              {selectedTask.taskType === 'creation' && (
-                <div className="space-y-6" id="creation-task-detail">
-                  
-                  {/* Parameter summary bar */}
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3 select-none">
-                    <div className="p-3 bg-slate-50 border border-slate-150 rounded-xl">
-                      <span className="block text-[9px] text-slate-400 font-bold uppercase tracking-wider">执行创制模式</span>
-                      <span className="block text-xs font-bold text-slate-800 mt-1">
-                        {selectedTask.type === 'topic' ? '🔬 选题裂变撰作' : '✍️ 主旨直接撰集'}
-                      </span>
-                    </div>
-                    <div className="p-3 bg-slate-50 border border-slate-150 rounded-xl">
-                      <span className="block text-[9px] text-slate-400 font-bold uppercase tracking-wider">调性人设约束</span>
-                      <span className="block text-xs font-bold text-slate-800 mt-1 truncate">
-                        {personas.find(p => p.id === selectedTask.personaId)?.name || '默认自然人设'}
-                      </span>
-                    </div>
-                    <div className="p-3 bg-slate-50 border border-slate-150 rounded-xl">
-                      <span className="block text-[9px] text-slate-400 font-bold uppercase tracking-wider">文献事实约束</span>
-                      <span className="block text-xs font-bold text-slate-800 mt-1">
-                        {selectedTask.kbDocIds ? `${selectedTask.kbDocIds.length} 篇事实文献` : '无约束论点'}
-                      </span>
-                    </div>
-                    <div className="p-3 bg-slate-50 border border-slate-150 rounded-xl">
-                      <span className="block text-[9px] text-slate-400 font-bold uppercase tracking-wider">实时联网扩展</span>
-                      <span className={`block text-xs font-bold mt-1 ${selectedTask.useWebSearch ? 'text-sky-600' : 'text-slate-450'}`}>
-                        {selectedTask.useWebSearch ? '● Google探针已开启' : '离线智能推衍'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
-                    <span className="text-[10px] font-bold text-slate-400">大作灵感原语大纲 / 创作要求</span>
-                    <p className="text-xs font-bold text-slate-800 mt-1 leading-relaxed">{selectedTask.theme}</p>
-                  </div>
-
-                  {/* 1. Pick Suggestion Topic Panel */}
-                  {selectedTask.status === 'suggesting' && selectedTask.suggestedTopics && (
-                    <div className="bg-slate-50 border border-indigo-150 p-5 rounded-2xl">
-                      <div className="mb-4 text-left">
-                        <h4 className="text-xs font-bold text-indigo-700 flex items-center gap-1.5">
-                          <Award className="w-4.5 h-4.5 text-indigo-650" />
-                          <span>AI 各派已根据灵流推演生成如下特征选题，请任择其一即可启动新文自动撰写 :</span>
-                        </h4>
-                      </div>
-
-                      <div className="grid grid-cols-1 gap-3">
-                        {selectedTask.suggestedTopics.map((topic, i) => (
-                          <div 
-                            key={i}
-                            onClick={() => handleSelectTopicSubmit(selectedTask.id, topic)}
-                            className="bg-white p-3 border border-slate-200 rounded-xl hover:border-indigo-400 hover:bg-indigo-50/10 cursor-pointer transition leading-relaxed text-left text-xs font-medium text-slate-800"
-                          >
-                            <span className="text-slate-350 mr-2 font-mono">[{i + 1}]</span>
-                            <span>{topic}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 2. Content Display Reader */}
-                  {selectedTask.status === 'completed' && selectedTask.generatedContent && (
-                    <div className="space-y-3" id="creation-article-container">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold text-slate-650 flex items-center gap-1.5">
-                          <CheckCircle className="w-4 h-4 text-emerald-500 animate-none" />
-                          <span>文章大作成品生成结果:</span>
-                        </span>
-
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleCopyText(selectedTask.generatedContent || "", selectedTask.id)}
-                            className="flex items-center gap-1 text-[10.5px] font-bold text-indigo-650 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2.5 py-1.5 transition"
-                          >
-                            {copiedTaskId === selectedTask.id ? (
-                              <>
-                                <Check className="w-3.5 h-3.5 text-emerald-500" />
-                                <span>已复制到剪切板</span>
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="w-3.5 h-3.5" />
-                                <span>复制全文</span>
-                              </>
-                            )}
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Display Markdown read box */}
-                      <div className="p-5 bg-slate-900 text-slate-100 rounded-2xl border border-slate-800 text-[11px] md:text-xs leading-relaxed max-h-96 overflow-y-auto text-left font-mono whitespace-pre-wrap">
-                        {selectedTask.generatedContent}
-                      </div>
-
-                      {/* Doc Archive options */}
-                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mt-4 text-left space-y-3">
-                        <div>
-                          <h5 className="text-[11px] font-bold text-slate-750 flex items-center gap-1.5">
-                            <Archive className="w-4 h-4 text-amber-500" />
-                            <span>想要直接归档此内容成果至我的受托知识库中吗?</span>
-                          </h5>
-                          <p className="text-[10px] text-slate-400 mt-0.5">选择后台的关联知识文献目录，即可把此文章存储并充实作为未来其他主题的参考论据资料。</p>
-                        </div>
-
-                        <div className="flex flex-col sm:flex-row gap-2.5">
-                          <select
-                            value={archiveKbId}
-                            onChange={(e) => {
-                              setArchiveKbId(e.target.value);
-                              setArchiveSuccess(false);
-                            }}
-                            className="bg-white px-2.5 py-1.5 text-xs rounded-lg border border-slate-205 outline-none cursor-pointer flex-1"
-                          >
-                            <option value="">选取要归档落库的知识目录文件夹...</option>
-                            {kbs.map(k => (
-                              <option key={k.id} value={k.id}>{k.name} (已有 {k.documentsCount ?? 0} 篇)</option>
-                            ))}
-                          </select>
-
-                          <button
-                            onClick={() => handleArchiveSubmit(selectedTask.id)}
-                            disabled={!archiveKbId || archiveSuccess}
-                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition shadow-3xs shrink-0 ${
-                              (!archiveKbId || archiveSuccess)
-                                ? "bg-slate-200 text-slate-405 border border-slate-300 cursor-not-allowed"
-                                : "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
-                            }`}
-                          >
-                            {archiveSuccess ? (
-                              <span className="flex items-center gap-1">
-                                <Check className="w-3.5 h-3.5" /> 已成功归档保存
-                              </span>
-                            ) : (
-                              <span>确认归档此篇</span>
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Task in creating states */}
-                  {['researching', 'writing', 'pending'].includes(selectedTask.status) && (
-                    <div className="py-12 bg-indigo-50/20 border border-dashed border-indigo-200 rounded-2xl flex flex-col justify-center items-center text-center">
-                      <Loader2 className="w-8 h-8 text-indigo-500 animate-spin mb-3" />
-                      <h5 className="text-xs font-bold text-slate-700">正在利用您的拟作人设调性以及事实语料进行精细创作推演...</h5>
-                      <p className="text-[10px] text-slate-400 mt-1 max-w-sm">系统包含联网和反向微格风格推拟，大概耗时 10~25 秒。该进程会自动进行，成功后立刻在这里以及内容列表看到大篇成作，请稍等一会。</p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-            </div>
-
-            {/* Modal Actions Footer */}
-            <div className="p-4 bg-slate-50 border-t border-slate-150 flex items-center justify-between shrink-0 select-none">
-              <span className="text-[10px] text-slate-400 font-normal leading-relaxed">
-                * 该任务隶属于独立创意沙箱，所有参数和结果已在此隔离运行，避免外界侵扰打扰。
-              </span>
-
-              {/* Action operations buttons */}
-              <div className="flex gap-2 text-xs font-bold shrink-0">
-                {/* 1. Cancellation */}
-                {selectedTask.taskType === 'scraper' && ['pending', 'scraping'].includes(selectedTask.status) && (
-                  <button
-                    onClick={() => {
-                      onCancelScraperTask(selectedTask.id);
-                      setSelectedTask(null);
-                    }}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-slate-200 hover:bg-slate-300 border border-slate-250 text-slate-650 rounded-lg transition"
-                  >
-                    <StopCircle className="w-3.5 h-3.5 text-slate-500" />
-                    <span>取消采集</span>
-                  </button>
-                )}
-                {selectedTask.taskType === 'creation' && ['pending', 'researching', 'writing', 'suggesting'].includes(selectedTask.status) && (
-                  <button
-                    onClick={() => {
-                      onCancelCreationTask(selectedTask.id);
-                      setSelectedTask(null);
-                    }}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-slate-200 hover:bg-slate-300 border border-slate-250 text-slate-650 rounded-lg transition"
-                  >
-                    <StopCircle className="w-3.5 h-3.5 text-slate-500" />
-                    <span>取消创作</span>
-                  </button>
-                )}
-
-                {/* 2. Retrying */}
-                {selectedTask.taskType === 'scraper' && ['failed', 'cancelled'].includes(selectedTask.status) && (
-                  <button
-                    onClick={() => {
-                      onRetryScraperTask(selectedTask.id);
-                      setSelectedTask(null);
-                    }}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>重新执行</span>
-                  </button>
-                )}
-                {selectedTask.taskType === 'creation' && ['failed', 'cancelled'].includes(selectedTask.status) && (
-                  <button
-                    onClick={() => {
-                      onRetryCreationTask(selectedTask.id);
-                      setSelectedTask(null);
-                    }}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>重新撰写</span>
-                  </button>
-                )}
-
-                {/* 3. Deletion */}
-                {selectedTask.taskType === 'scraper' && (
-                  <button
-                    onClick={() => {
-                      if (window.confirm("确定要删除此采集任务流水记录吗？")) {
-                        onDeleteScraperTask(selectedTask.id);
-                        setSelectedTask(null);
-                      }
-                    }}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-650 rounded-lg transition"
-                  >
-                    <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                    <span>删除任务</span>
-                  </button>
-                )}
-                {selectedTask.taskType === 'creation' && (
-                  <button
-                    onClick={() => {
-                      if (window.confirm("确定要删除此精细创作记录吗？")) {
-                        onDeleteCreationTask(selectedTask.id);
-                        setSelectedTask(null);
-                      }
-                    }}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-650 rounded-lg transition"
-                  >
-                    <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                    <span>删除任务</span>
-                  </button>
-                )}
-                
                 <button
-                  onClick={() => setSelectedTask(null)}
-                  className="px-4 py-1.5 bg-slate-900 border border-slate-900 hover:bg-slate-800 text-white rounded-lg transition"
+                  onClick={() => setColInfoOpen(false)}
+                  className="p-1 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded transition"
+                  title="收起此栏"
                 >
-                  关闭
+                  <EyeOff className="w-3.5 h-3.5" />
                 </button>
               </div>
-            </div>
 
-          </div>
-        </div>
-      )}
-
-      {/* ==================== 4. UNIFIED CREATION WIZARD MODAL ==================== */}
-      {isCreateOpen && (
-        <div className="fixed inset-0 z-55 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)' }} id="unified-create-overlay">
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl w-full max-w-2xl overflow-hidden text-left" id="unified-create-modal">
-            
-            {/* Modal Header */}
-            <div className="p-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <h3 className="text-xs font-bold text-slate-850 flex items-center gap-1.5">
-                  <Layers className="w-4.5 h-4.5 text-indigo-605" />
-                  新建灵感或智能任务流水线
-                </h3>
-                <p className="text-[10px] text-slate-450 mt-0.5">
-                  选择该创作空间需要激活的平行创意通道，整合您的事实、人格和内容撰稿。
-                </p>
-              </div>
-              <button
-                onClick={() => setIsCreateOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 hover:bg-slate-100 rounded-lg transition"
-              >
-                <XCircle className="w-4.5 h-4.5" />
-              </button>
-            </div>
-
-            {/* Main Form Area */}
-            <form onSubmit={handleCreateSubmit} className="flex flex-col">
-              
-              {/* STEP 1: CHOOSE TASK TYPE */}
-              {creationStep === 1 && (
-                <div className="p-6 space-y-4" id="wizard-step-1">
-                  <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wide mb-2 select-none">
-                    请选择您要构建执行的特定创意任务类型:
-                  </h4>
-
-                  <div className="grid grid-cols-1 gap-4">
-                    
-                    {/* Option A: Scraper */}
-                    <div 
-                      onClick={() => {
-                        setChosenTaskType("scraper");
-                        setCreationStep(2);
-                      }}
-                      className="p-4 rounded-xl border border-slate-200 bg-white hover:border-indigo-400 hover:bg-indigo-50/5 cursor-pointer transition flex items-start gap-3.5 shadow-3xs"
-                    >
-                      <div className="p-2.5 bg-sky-50 text-sky-600 rounded-xl shrink-0 mt-0.5">
-                        <Globe className="w-5 h-5" />
-                      </div>
-                      <div className="space-y-1 text-left flex-1">
-                        <h5 className="text-xs font-bold text-slate-800">数据采集与网页爬取 (Data Crawling)</h5>
-                        <p className="text-[10.5px] text-slate-450 leading-relaxed font-normal">
-                          指定需要摄纳的特定灵感网站或学术大篇章，AI将自动清洗、去噪声并落库到您的专属知识数据库文件夹，为后续拟作打底。
-                        </p>
-                      </div>
-                      <div className="self-center pl-2 shrink-0">
-                        <ChevronRight className="w-4 h-4 text-slate-350" />
-                      </div>
-                    </div>
-
-                    {/* Option B: Persona Extraction */}
-                    <div 
-                      onClick={() => {
-                        setChosenTaskType("persona");
-                        setCreationStep(2);
-                      }}
-                      className="p-4 rounded-xl border border-slate-200 bg-white hover:border-indigo-400 hover:bg-indigo-50/5 cursor-pointer transition flex items-start gap-3.5 shadow-3xs"
-                    >
-                      <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl shrink-0 mt-0.5">
-                        <BrainCircuit className="w-5 h-5" />
-                      </div>
-                      <div className="space-y-1 text-left flex-1">
-                        <h5 className="text-xs font-bold text-slate-800">修辞调性/智能人格萃提 (Persona reverse-engineering)</h5>
-                        <p className="text-[10.5px] text-slate-450 leading-relaxed font-normal">
-                          引入特定的语料，利用高维语义反向解析写手的核心写作风骨、常切口词、文笔态度等，最终虚拟克隆提纯出可用笔触模板。
-                        </p>
-                      </div>
-                      <div className="self-center pl-2 shrink-0">
-                        <ChevronRight className="w-4 h-4 text-slate-350" />
-                      </div>
-                    </div>
-
-                    {/* Option C: Creation Task */}
-                    <div 
-                      onClick={() => {
-                        setChosenTaskType("creation");
-                        setCreationStep(2);
-                      }}
-                      className="p-4 rounded-xl border border-slate-200 bg-white hover:border-indigo-400 hover:bg-indigo-50/5 cursor-pointer transition flex items-start gap-3.5 shadow-3xs"
-                    >
-                      <div className="p-2.5 bg-pink-50 text-pink-600 rounded-xl shrink-0 mt-0.5">
-                        <PenTool className="w-5 h-5" />
-                      </div>
-                      <div className="space-y-1 text-left flex-1">
-                        <h5 className="text-xs font-bold text-slate-800">智慧AI撰笔文稿创作 (Intelligent Creative Writing)</h5>
-                        <p className="text-[10.5px] text-slate-450 leading-relaxed font-normal">
-                          融合特定的克隆写手人设调性、特定参考文献（离线文献）和选配Google探针实时搜索，自如进行多方案选题生成或命题直写全文。
-                        </p>
-                      </div>
-                      <div className="self-center pl-2 shrink-0">
-                        <ChevronRight className="w-4 h-4 text-slate-350" />
-                      </div>
-                    </div>
-
-                  </div>
-                </div>
-              )}
-
-              {/* STEP 2: DETAILS INPUT DEPENDING ON CHOSEN TYPE */}
-              {creationStep === 2 && chosenTaskType && (
-                <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto" id="wizard-step-2">
-                  
-                  {/* Task label indicator */}
-                  <div className="p-3 bg-slate-50 border border-slate-150 rounded-xl flex items-center justify-between select-none">
-                    <span className="text-[10.5px] font-bold text-slate-500">
-                      正在搭建平行创意通道 :
-                    </span>
-                    {getTypeBadge(chosenTaskType)}
-                  </div>
-
-                  {/* FORM TYPE 1: SCRAPER CONFIG */}
-                  {chosenTaskType === 'scraper' && (
-                    <div className="space-y-3.5 text-left" id="scraper-form-wizard">
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-600 mb-1.5">采集任务代号名 <span className="text-rose-500">*</span></label>
-                        <input
-                          type="text"
-                          required
-                          value={scrapName}
-                          onChange={(e) => setScrapName(e.target.value)}
-                          placeholder="例如：量子物理科学前沿第一期采集、旅行攻略爆款评论..."
-                          className="w-full bg-slate-50 hover:bg-slate-100/50 focus:bg-white text-xs px-3 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-indigo-400 transition"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-600 mb-1.5">采集源网页目标 URL 链接 <span className="text-rose-500">*</span></label>
-                        <input
-                          type="url"
-                          required
-                          value={scrapUrl}
-                          onChange={(e) => setScrapUrl(e.target.value)}
-                          placeholder="目标抓取的完整地址：https://example.com/topic..."
-                          className="w-full bg-slate-50 hover:bg-slate-100/50 focus:bg-white text-xs px-3 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-indigo-400 transition font-mono"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 text-left custom-scrollbar">
+                {isDraft ? (
+                  /* ====================================
+                     DRAFT PARAMETERS INPUT FORM
+                     ==================================== */
+                  <div className="space-y-4">
+                    {/* A. Scraper Draft Form */}
+                    {selectedTask.taskType === 'scraper' && (
+                      <div className="space-y-3.5">
+                        <div className="p-2.5 bg-sky-50 border border-sky-100 rounded-xl mb-1">
+                          <p className="text-[10px] text-sky-700 font-normal leading-normal">
+                            请配置网络爬虫与清洗指令，我们将获取去除噪声（如页眉、侧边等）后的清洁正文。
+                          </p>
+                        </div>
                         <div>
-                          <label className="block text-[11px] font-bold text-slate-600 mb-1.5">
-                            入库挂钩知识分类目录 <span className="text-rose-500">*</span>
-                          </label>
+                          <label className="block text-[10.5px] font-bold text-slate-500 mb-1">任务代号名 <span className="text-red-500">*</span></label>
+                          <input
+                            type="text"
+                            required
+                            value={scrapName}
+                            onChange={(e) => setScrapName(e.target.value)}
+                            placeholder="例如：硬核前沿物理文献采集..."
+                            className="w-full bg-slate-50 hover:bg-slate-100/60 focus:bg-white text-xs px-3 py-2.5 rounded-xl border border-slate-205 outline-none text-slate-800 focus:border-indigo-500 transition shadow-3xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10.5px] font-bold text-slate-500 mb-1">网页目标 URL 链接 <span className="text-red-500">*</span></label>
+                          <input
+                            type="url"
+                            required
+                            value={scrapUrl}
+                            onChange={(e) => setScrapUrl(e.target.value)}
+                            placeholder="前缀完整的合法链接(https://...)"
+                            className="w-full bg-slate-50 hover:bg-slate-100/60 focus:bg-white text-xs px-3 py-2.5 rounded-xl border border-slate-205 outline-none text-slate-800 focus:border-indigo-500 transition font-mono shadow-3xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10.5px] font-bold text-slate-500 mb-1">入库关联知识分类挂钩 <span className="text-red-500">*</span></label>
                           <select
                             value={scrapKbId}
                             onChange={(e) => setScrapKbId(e.target.value)}
-                            className="w-full bg-slate-50 hover:bg-slate-100/50 focus:bg-white text-xs px-2.5 py-2.5 rounded-xl border border-slate-200 outline-none cursor-pointer"
+                            className="w-full bg-slate-50 text-xs px-2.5 py-2.5 rounded-xl border border-slate-205 text-slate-800 outline-none cursor-pointer focus:bg-white focus:border-indigo-500 hover:bg-slate-100/60 transition shadow-3xs"
                           >
                             {kbs.map(k => (
                               <option key={k.id} value={k.id}>{k.name}</option>
                             ))}
                           </select>
                         </div>
-
                         <div>
-                          <label className="block text-[11px] font-bold text-slate-600 mb-1.5">
-                            过滤去噪及重点提纯 prompt (可选)
-                          </label>
-                          <input
-                            type="text"
+                          <label className="block text-[10.5px] font-bold text-slate-500 mb-1">清洗去噪加工 Prompt 提示词 (选配)</label>
+                          <textarea
                             value={scrapPrompt}
                             onChange={(e) => setScrapPrompt(e.target.value)}
-                            placeholder="如：仅保留核心观点，去除导航和页脚广告板..."
-                            className="w-full bg-slate-50 hover:bg-slate-100/50 focus:bg-white text-xs px-3 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-indigo-400 transition"
+                            placeholder="例如: 仅抽提核心论点 and 研究背景，去除不相关广告和声明..."
+                            className="w-full bg-slate-50 hover:bg-slate-100/60 focus:bg-white text-xs px-3 py-2.5 rounded-xl border border-slate-205 outline-none text-slate-800 focus:border-indigo-500 transition resize-none leading-relaxed h-20 shadow-3xs"
                           />
                         </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {/* FORM TYPE 2: PERSONA TRAITS CONFIG */}
-                  {chosenTaskType === 'persona' && (
-                    <div className="space-y-4 text-left" id="persona-form-wizard">
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-600 mb-1.5">提纯萃取的新人设定名 <span className="text-rose-500">*</span></label>
-                        <input
-                          type="text"
-                          required
-                          value={persName}
-                          onChange={(e) => setPersName(e.target.value)}
-                          placeholder="例如：冷峻硬核科普写手、高逼格小奢旅行推文风格..."
-                          className="w-full bg-slate-50 hover:bg-slate-100/50 focus:bg-white text-xs px-3 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-indigo-400 transition"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-600 mb-1.5">
-                          勾选用于调性分析的输入事实语料库 (可多选) <span className="text-rose-500">*</span>
-                        </label>
-                        <div className="p-3 bg-slate-55 rounded-xl border border-slate-200/80 max-h-44 overflow-y-auto space-y-2 select-none">
-                          {kbs.length === 0 ? (
-                            <p className="text-slate-405 text-center py-6 text-[10.5px] italic">库里目前没有可拉入的语料库目录，请先采集或建立一个知识目录</p>
-                          ) : (
-                            kbs.map(k => {
-                              const isChecked = persKbIds.includes(k.id);
-                              return (
-                                <label 
-                                  key={k.id} 
-                                  className={`flex items-center gap-2.5 p-2 rounded-lg border transition cursor-pointer ${
-                                    isChecked 
-                                      ? 'bg-emerald-50/10 border-emerald-250 text-emerald-800' 
-                                      : 'bg-white border-slate-200 hover:bg-slate-50'
-                                  }`}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={isChecked}
-                                    onChange={() => {
-                                      if (isChecked) {
-                                        setPersKbIds(prev => prev.filter(id => id !== k.id));
-                                      } else {
-                                        setPersKbIds(prev => [...prev, k.id]);
-                                      }
-                                    }}
-                                    className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5 cursor-pointer"
-                                  />
-                                  <div className="text-left">
-                                    <span className="text-[11px] font-bold block leading-normal">{k.name}</span>
-                                    <span className="text-[9px] text-slate-400 font-mono">(包含 {(allDocs.filter(d => d.kbId === k.id).length)} 篇特定范文语篇)</span>
-                                  </div>
-                                </label>
-                              );
-                            })
-                          )}
+                    {/* B. Persona Draft Form */}
+                    {selectedTask.taskType === 'persona' && (
+                      <div className="space-y-3.5">
+                        <div className="p-2.5 bg-emerald-50 border border-emerald-100 rounded-xl mb-1">
+                          <p className="text-[10px] text-emerald-700 font-normal leading-normal">
+                            利用反向微格高维解密，自动克隆出该库文件的特征语气、词切口以及文笔。
+                          </p>
+                        </div>
+                        <div>
+                          <label className="block text-[10.5px] font-bold text-slate-500 mb-1">萃取提取的人设模名 <span className="text-red-500">*</span></label>
+                          <input
+                            type="text"
+                            required
+                            value={persName}
+                            onChange={(e) => setPersName(e.target.value)}
+                            placeholder="例如：冷峻庄严写笔风骨、科普切口特色..."
+                            className="w-full bg-slate-50 hover:bg-slate-100/60 focus:bg-white text-xs px-3 py-2.5 rounded-xl border border-slate-205 outline-none text-slate-800 focus:border-indigo-500 transition shadow-3xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10.5px] font-bold text-slate-400 mb-1">圈选特征事实语料库目录 (至少选择一个) <span className="text-red-500">*</span></label>
+                          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 max-h-56 overflow-y-auto space-y-2 select-none">
+                            {kbs.length === 0 ? (
+                              <p className="text-slate-450 text-center py-6 text-[10px] italic">库中无预存目录文件夹</p>
+                            ) : (
+                              kbs.map(k => {
+                                const isChecked = persKbIds.includes(k.id);
+                                return (
+                                  <label 
+                                    key={k.id} 
+                                    className={`flex items-start gap-2.5 p-2 rounded-lg border transition cursor-pointer ${
+                                      isChecked 
+                                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800' 
+                                        : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
+                                    }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => {
+                                        if (isChecked) {
+                                          setPersKbIds(prev => prev.filter(id => id !== k.id));
+                                        } else {
+                                          setPersKbIds(prev => [...prev, k.id]);
+                                        }
+                                      }}
+                                      className="rounded border-slate-300 bg-white text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5 cursor-pointer mt-0.5"
+                                    />
+                                    <div className="text-left">
+                                      <span className="text-[11px] font-bold block leading-normal">{k.name}</span>
+                                      <span className="text-[9px] text-slate-505 font-mono">(范文 {(allDocs.filter(d => d.kbId === k.id).length)} 篇)</span>
+                                    </div>
+                                  </label>
+                                );
+                              })
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {/* FORM TYPE 3: CREATION CONFIG */}
-                  {chosenTaskType === 'creation' && (
-                    <div className="space-y-4 text-left font-normal" id="creation-form-wizard">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* C. Creation Draft Form */}
+                    {selectedTask.taskType === 'creation' && (
+                      <div className="space-y-3.5">
+                        <div className="p-2.5 bg-pink-50 border border-pink-100 rounded-xl mb-1">
+                          <p className="text-[10px] text-pink-700 font-normal leading-normal">
+                            融合下方的灵感命题、特定的风骨人设体系，AI将直接撰拟大作内容。
+                          </p>
+                        </div>
                         <div>
-                          <label className="block text-[11px] font-bold text-slate-600 mb-1.5">创作进程模式</label>
-                          <div className="flex bg-slate-100 p-1 rounded-xl" id="creat-type-selection">
+                          <label className="block text-[11px] font-bold text-slate-500 mb-1">创作进程模式</label>
+                          <div className="grid grid-cols-2 gap-1 bg-slate-100 p-0.5 rounded-lg">
                             {[
-                              { id: 'direct', label: '命题直接撰全文' },
-                              { id: 'topic', label: 'AI 多方案选题裂变' }
+                              { id: 'direct', label: '命题直写全文' },
+                              { id: 'topic', label: '多方案选题裂变' }
                             ].map((opt) => (
                               <button
                                 type="button"
                                 key={opt.id}
                                 onClick={() => setCreatType(opt.id as any)}
-                                className={`flex-1 px-3 py-1.5 text-[10.5px] font-bold rounded-lg transition-all ${
+                                className={`px-2 py-1.5 text-[10.5px] font-bold rounded-md transition ${
                                   creatType === opt.id
                                     ? 'bg-white text-slate-800 shadow-3xs'
                                     : 'text-slate-500 hover:text-slate-800'
@@ -1222,325 +614,1050 @@ export default function AllTasksPanel({
                             ))}
                           </div>
                         </div>
-
                         <div>
-                          <label className="block text-[11px] font-bold text-slate-600 mb-1.5">文笔调性人设约束</label>
+                          <label className="block text-[10.5px] font-bold text-slate-500 mb-1">写作调性约束模版</label>
                           <select
                             value={creatPersonaId}
                             onChange={(e) => setCreatPersonaId(e.target.value)}
-                            className="w-full bg-slate-50 hover:bg-slate-100/50 focus:bg-white text-xs px-2.5 py-2 rounded-xl border border-slate-200 outline-none cursor-pointer"
+                            className="w-full bg-slate-50 text-xs px-2.5 py-2.5 rounded-xl border border-slate-205 text-slate-800 outline-none cursor-pointer focus:bg-white focus:border-indigo-500 hover:bg-slate-100/60 transition shadow-3xs"
                           >
-                            <option value="">选取我提纯萃取的人事风格模范...</option>
+                            <option value="">使用系统自然默认语调人设</option>
                             {personas.map(p => (
                               <option key={p.id} value={p.id}>{p.name}</option>
                             ))}
                           </select>
                         </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-600 mb-1.5">
-                          指定创作核心大纲 / 内容原质灵感 <span className="text-rose-500">*</span>
-                        </label>
-                        <textarea
-                          required
-                          value={creatTheme}
-                          onChange={(e) => setCreatTheme(e.target.value)}
-                          placeholder="描述您要创作的主题：如「利用量子力学中微子的特性进行深空通信的构想，字数一千五百字，带科幻色彩」..."
-                          rows={3}
-                          className="w-full bg-slate-50 hover:bg-slate-100/50 focus:bg-white text-xs px-3 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-indigo-400 transition resize-none leading-relaxed"
-                        />
-                      </div>
-
-                      {/* Reference document selectors */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center pt-2 border-t border-slate-100">
-                        {/* Selected Docs list trigger button */}
                         <div>
-                          <label className="block text-[11px] font-bold text-slate-600 mb-1">参考文献支撑</label>
+                          <label className="block text-[10.5px] font-bold text-slate-500 mb-1">创作立意核心主题 / 原词大纲 <span className="text-red-500">*</span></label>
+                          <textarea
+                            required
+                            value={creatTheme}
+                            onChange={(e) => setCreatTheme(e.target.value)}
+                            placeholder="如：写一篇关于硬科幻视角的星纪元衰亡史诗..."
+                            className="w-full bg-slate-50 hover:bg-slate-100/60 focus:bg-white text-xs px-3 py-2.5 rounded-xl border border-slate-205 outline-none text-slate-800 focus:border-indigo-500 transition resize-none leading-relaxed h-20 shadow-3xs"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="block text-[10.5px] font-bold text-slate-500 mb-0.5">支持参考文献引经据典</label>
                           <button
                             type="button"
                             onClick={() => {
                               setTempSelectedDocIds(creatDocIds);
                               setIsKbDocsSelectorOpen(true);
                             }}
-                            className="w-full flex items-center justify-between text-left text-xs text-slate-700 bg-slate-50 hover:bg-slate-100/60 border border-slate-200 px-3.5 py-2.5 rounded-xl transition"
+                            className="w-full flex items-center justify-between text-left text-xs text-slate-705 bg-slate-50 hover:bg-slate-100 border border-slate-200 px-3.5 py-2 rounded-xl transition shadow-3xs"
                           >
-                            <span>已择定 {creatDocIds.length} 篇参考事实文献</span>
-                            <ChevronRight className="w-4 h-4 text-slate-400" />
+                            <span className="truncate text-slate-600 font-bold">已选择 {creatDocIds.length} 篇参考事实文献</span>
+                            <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
                           </button>
                         </div>
-
-                        {/* Web search toggle checkbox */}
-                        <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200 self-end">
+                        <div className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-200 shadow-3xs">
                           <div className="text-left pr-2">
-                            <span className="block text-[11px] font-bold text-slate-700">Google 搜索引擎实时支撑</span>
-                            <span className="block text-[9px] text-slate-450 mt-0.5">当涉及最尖端时事，允许AI临时探针扩充事实。</span>
+                            <span className="block text-[10.5px] font-bold text-slate-700">实时 Google 探针支持</span>
+                            <span className="block text-[8.5px] text-slate-450">自动实时拉取搜索引擎最前沿的事实真相</span>
                           </div>
                           <input
                             type="checkbox"
                             checked={creatWebSearch}
                             onChange={(e) => setCreatWebSearch(e.target.checked)}
-                            className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer shrink-0"
+                            className="w-4 h-4 bg-white border-slate-300 text-indigo-600 rounded focus:ring-indigo-500 shrink-0 cursor-pointer"
                           />
                         </div>
                       </div>
-                    </div>
-                  )}
-
-                </div>
-              )}
-
-              {/* Modal Step Actions Footer */}
-              <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2 text-xs font-bold">
-                {creationStep === 2 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCreationStep(1);
-                    }}
-                    className="px-4 py-2 hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-lg transition"
-                  >
-                    上一步
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => setIsCreateOpen(false)}
-                  className="px-4 py-2 hover:bg-slate-100 text-slate-500 border border-slate-200 rounded-lg transition"
-                >
-                  取消
-                </button>
-
-                {creationStep === 1 ? (
-                  <button
-                    type="button"
-                    disabled={!chosenTaskType}
-                    onClick={() => setCreationStep(2)}
-                    className={`px-5 py-2 text-white rounded-lg transition shadow-3xs ${
-                      chosenTaskType
-                        ? "bg-indigo-600 hover:bg-indigo-700 cursor-pointer"
-                        : "bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed"
-                    }`}
-                  >
-                    继续配置参数
-                  </button>
-                ) : (
-                  <button
-                    type="submit"
-                    disabled={
-                      submitting || 
-                      (chosenTaskType === 'scraper' && (!scrapName.trim() || !scrapUrl.trim() || !scrapKbId)) ||
-                      (chosenTaskType === 'persona' && (!persName.trim() || persKbIds.length === 0)) ||
-                      (chosenTaskType === 'creation' && !creatTheme.trim())
-                    }
-                    className={`px-5 py-2 text-white rounded-lg transition shadow-3xs ${
-                      (submitting || 
-                       (chosenTaskType === 'scraper' && (!scrapName.trim() || !scrapUrl.trim() || !scrapKbId)) ||
-                       (chosenTaskType === 'persona' && (!persName.trim() || persKbIds.length === 0)) ||
-                       (chosenTaskType === 'creation' && !creatTheme.trim()))
-                        ? "bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed"
-                        : "bg-indigo-600 hover:bg-indigo-700 cursor-pointer"
-                    }`}
-                  >
-                    {submitting ? (
-                      <span className="flex items-center gap-1.5 justify-center">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>正在创建启动中...</span>
-                      </span>
-                    ) : (
-                      <span>确认创建并执行</span>
                     )}
-                  </button>
-                )}
-              </div>
-
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ==================== 5. SUB-SELECTOR FOR DOC PICKER MODAL (From Creation nested popup) ==================== */}
-      {isKbDocsSelectorOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-905/65 backdrop-blur-sm" style={{ backgroundColor: 'rgba(15, 23, 42, 0.6)' }} id="nested-docs-selector">
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl w-full max-w-2xl h-[70vh] flex flex-col overflow-hidden max-h-[80vh] text-left" id="inner-docs-selector-modal">
-            
-            {/* Header */}
-            <div className="p-4 bg-slate-50 border-b border-slate-150 flex items-center justify-between shrink-0">
-              <div className="text-left">
-                <h4 className="text-xs font-bold text-slate-805 flex items-center gap-2">
-                  <Database className="w-4.5 h-4.5 text-indigo-550" />
-                  <span>圈选参考文献和定位目录范围</span>
-                </h4>
-                <p className="text-[10px] text-slate-450 mt-1">
-                  选择作为生成内容依据的事实支撑文献，支持多选或对整个文件夹目录进行打包勾选限制。
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsKbDocsSelectorOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 border rounded hover:bg-slate-200/50 transition shrink-0"
-              >
-                <XCircle className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Split layout: folder list (left 4) & doc list (right 8) */}
-            <div className="flex-1 flex overflow-hidden min-h-0 bg-slate-50 bg-opacity-40" id="docs-split-view">
-              
-              {/* LEFT FOLDER COLUMN */}
-              <div className="w-1/3 border-r border-slate-150 p-4 space-y-2 overflow-y-auto">
-                <div className="text-left pb-1 border-b border-slate-100 select-none">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">
-                    可引入的语篇分类目录
-                  </span>
-                </div>
-
-                <div className="space-y-1.5">
-                  {kbs.length === 0 ? (
-                    <p className="text-[10px] italic text-slate-400 text-center py-6">尚无知识库目录</p>
-                  ) : (
-                    kbs.map(kb => {
-                      const isSelectedKb = activeKbId === kb.id;
-                      const kbDocs = allDocs.filter(d => d.kbId === kb.id);
-                      const kbDocIds = kbDocs.map(d => d.id);
-                      
-                      const isSomeDocsChecked = kbDocIds.some(id => tempSelectedDocIds.includes(id)) && !kbDocIds.every(id => tempSelectedDocIds.includes(id));
-                      const isAllDocsChecked = kbDocIds.length > 0 && kbDocIds.every(id => tempSelectedDocIds.includes(id));
-
-                      const handleKbToggle = (e: React.MouseEvent) => {
-                        e.stopPropagation();
-                        if (isAllDocsChecked || tempSelectedKbIds.includes(kb.id)) {
-                          setTempSelectedKbIds(prev => prev.filter(id => id !== kb.id));
-                          setTempSelectedDocIds(prev => prev.filter(id => !kbDocIds.includes(id)));
-                        } else {
-                          setTempSelectedKbIds(prev => [...new Set([...prev, kb.id])]);
-                          if (kbDocs.length > 0) {
-                            setTempSelectedDocIds(prev => [...new Set([...prev, ...kbDocIds])]);
-                          }
-                        }
-                      };
-
-                      return (
-                        <div
-                          key={kb.id}
-                          onClick={() => setActiveKbId(kb.id)}
-                          className={`p-2 rounded-xl border transition cursor-pointer text-left flex items-start gap-2 ${
-                            isSelectedKb
-                              ? 'bg-white border-indigo-200 shadow-3xs text-indigo-700 font-bold'
-                              : 'bg-transparent border-transparent text-slate-655 hover:bg-slate-100/50'
-                          }`}
-                        >
-                          <div className="pt-0.5 shrink-0" onClick={handleKbToggle}>
-                            <input
-                              type="checkbox"
-                              checked={isAllDocsChecked || (kbDocs.length === 0 && tempSelectedKbIds.includes(kb.id))}
-                              onChange={() => {}} // Swallowed in click
-                              className="rounded border-slate-300 text-indigo-650 h-3 w-3 cursor-pointer"
-                            />
-                          </div>
-
-                          <div className="flex-1 min-w-0">
-                            <span className="text-[11.5px] truncate block">{kb.name}</span>
-                          </div>
-                          <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 rounded-full font-mono font-bold shrink-0">
-                            {kbDocs.length}
+                  </div>
+                ) : (
+                  /* ====================================
+                     EXISTING TASK READ-ONLY PARAMETERS
+                     ==================================== */
+                  <div className="space-y-4">
+                    {selectedTask.taskType === 'scraper' && (
+                      <div className="space-y-3 font-normal text-slate-700 text-xs">
+                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-150 shadow-3xs">
+                          <span className="block text-[9px] text-slate-455 uppercase font-black font-mono tracking-wider">采集代号名称</span>
+                          <span className="block font-bold mt-1 text-slate-800">{selectedTask.name}</span>
+                        </div>
+                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-150 shadow-3xs">
+                          <span className="block text-[9px] text-slate-455 uppercase font-black font-mono tracking-wider">采集源 URL 目标地址</span>
+                          <a href={selectedTask.url} target="_blank" rel="noreferrer" className="block text-indigo-650 hover:underline mt-1 font-mono break-all leading-normal text-[11px] font-bold">
+                            {selectedTask.url}
+                          </a>
+                        </div>
+                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-150 shadow-3xs">
+                          <span className="block text-[9px] text-slate-455 uppercase font-black font-mono tracking-wider">挂靠的知识文件夹</span>
+                          <span className="block font-bold mt-0.5 text-slate-800">
+                            {kbs.find(kb => kb.id === selectedTask.kbId)?.name || "默认知识分类目录"}
                           </span>
                         </div>
-                      );
-                    })
-                  )}
+                        {selectedTask.prompt && (
+                          <div className="bg-slate-50 p-3 rounded-xl border border-slate-150 shadow-3xs">
+                            <span className="block text-[9px] text-slate-455 uppercase font-black font-mono tracking-wider">清洗与过滤提示词</span>
+                            <p className="block mt-1 leading-relaxed text-slate-600 italic">"{selectedTask.prompt}"</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {selectedTask.taskType === 'persona' && (
+                      <div className="space-y-3 text-xs text-slate-700">
+                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-155 shadow-3xs">
+                          <span className="block text-[9px] text-slate-455 uppercase font-mono tracking-wider">人设风骨名称</span>
+                          <span className="block font-bold mt-1 text-slate-800">{selectedTask.name}</span>
+                        </div>
+                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-155 shadow-3xs space-y-1.5">
+                          <span className="block text-[9px] text-slate-455 uppercase font-mono tracking-wider">引入参考的特征范本集合</span>
+                          <div className="flex flex-col gap-1 pt-1">
+                            {safeList(selectedTask.kbIds).map(kbId => (
+                              <span key={kbId} className="inline-flex items-center gap-1.5 text-[10px] text-indigo-705 font-bold bg-indigo-50 px-2 py-1 rounded border border-indigo-100">
+                                <Database className="w-3 h-3 text-indigo-500" />
+                                {kbs.find(k => k.id === kbId)?.name || kbId}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedTask.taskType === 'creation' && (
+                      <div className="space-y-3 text-xs text-slate-700">
+                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-150 shadow-3xs">
+                          <span className="block text-[9px] text-slate-455 uppercase font-mono tracking-wider">命题创作模式</span>
+                          <span className="block font-extrabold mt-1 text-indigo-650">
+                            {selectedTask.type === 'topic' ? "🔬 选题裂变并择一生成" : "✍️ 直接按提纲生成全文成品"}
+                          </span>
+                        </div>
+                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-155 shadow-3xs">
+                          <span className="block text-[9px] text-slate-455 uppercase font-mono tracking-wider">指定的克隆调性人设</span>
+                          <span className="block font-bold mt-1 text-slate-800">
+                            {personas.find(p => p.id === selectedTask.personaId)?.name || "无特定风骨，使用系统自然默认"}
+                          </span>
+                        </div>
+                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-155 shadow-3xs">
+                          <span className="block text-[9px] text-slate-455 uppercase font-mono tracking-wider">立意主题与起草大纲</span>
+                          <p className="block mt-1 font-bold leading-relaxed text-slate-800 break-words">{selectedTask.theme}</p>
+                        </div>
+                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-155 shadow-3xs">
+                          <span className="block text-[9px] text-slate-455 uppercase font-mono tracking-wider">引用离线事实文献数量</span>
+                          <span className="block font-bold mt-1 text-slate-700">
+                            📁 {safeList(selectedTask.kbDocIds).length} 篇离线文献事实段落约束
+                          </span>
+                        </div>
+                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-150 flex items-center justify-between shadow-3xs">
+                          <span className="text-[10px] text-slate-500">实时 Google 引擎支撑状态</span>
+                          <span className={`text-[10px] font-extrabold ${selectedTask.useWebSearch ? "text-sky-600" : "text-slate-400"}`}>
+                            {selectedTask.useWebSearch ? "● Google实时探针已开启" : "不联网(仅离线语料)"}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* Left Col Collapsed Strip */
+            <div 
+              onClick={() => setColInfoOpen(true)}
+              className="w-12 bg-white hover:bg-slate-50 border-r border-slate-200 flex flex-col items-center py-4 cursor-pointer gap-2 select-none group"
+            >
+              <Eye className="w-4 h-4 text-slate-400 group-hover:text-slate-700" />
+              <div className="h-6 w-[1.5px] bg-slate-200 my-1" />
+              <span className="font-bold text-[10px] uppercase tracking-widest text-slate-500" style={{ writingMode: 'vertical-rl' }}>
+                [01] 任务配置信息栏
+              </span>
+            </div>
+          )}
+
+          {/* ====================================================
+              COLUMN 2: TASK PROCESS/STATUS (MIDDLE)
+             ==================================================== */}
+          {colStatusOpen ? (
+            <div className="flex-1 min-w-0 flex flex-col bg-slate-50 h-full overflow-hidden transition-all duration-300">
+              <div className="p-3.5 bg-white border-b border-slate-205 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2 text-slate-705 font-bold text-xs select-none">
+                  <Terminal className="w-4 h-4 text-indigo-500" />
+                  <span>[02] 执行状态与沙箱控制台</span>
                 </div>
+                <button
+                  onClick={() => setColStatusOpen(false)}
+                  className="p-1 text-slate-400 hover:text-slate-805 hover:bg-slate-100 rounded transition"
+                  title="收起此栏"
+                >
+                  <EyeOff className="w-3.5 h-3.5" />
+                </button>
               </div>
 
-              {/* RIGHT ARTICLE COLUMN */}
-              <div className="flex-1 flex flex-col h-full bg-white select-none">
-                <div className="p-3 bg-slate-50 border-b border-slate-100 text-left shrink-0">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">
-                    可引用的文献段落、参考源文件
-                  </span>
-                </div>
+              <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 text-left custom-scrollbar">
+                
+                {/* A. Status Card Box */}
+                <div className="bg-slate-950 rounded-xl border border-slate-800 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-slate-450 uppercase font-bold">进程状态检测</span>
+                    <span>{isDraft ? <span className="text-xs text-slate-450">新草案待启动</span> : getStatusBadge(selectedTask.status)}</span>
+                  </div>
 
-                <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                  {allDocs.filter(d => d.kbId === activeKbId).length === 0 ? (
-                    <div className="text-center py-12 text-slate-400">
-                      <p className="text-xs italic">该分类目录文件夹里没有论据，可先采集增加。</p>
+                  {isDraft ? (
+                    <div className="py-2 space-y-3 text-center">
+                      <p className="text-[10.5px] text-slate-400 font-normal leading-relaxed text-left">
+                        请确保在左侧面板中填写的参数均已准备就绪。点击下方按钮，系统将开启隔离的微格沙箱，自动初始化智能执行流。
+                      </p>
+                      
+                      <button
+                        onClick={() => handleSubmitTaskDraft()}
+                        disabled={
+                          submitting || 
+                          (selectedTask.taskType === 'scraper' && (!scrapName.trim() || !scrapUrl.trim() || !scrapKbId)) ||
+                          (selectedTask.taskType === 'persona' && (!persName.trim() || persKbIds.length === 0)) ||
+                          (selectedTask.taskType === 'creation' && !creatTheme.trim())
+                        }
+                        className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:zoom-95 hover:from-indigo-700 hover:to-indigo-800 text-white rounded-xl text-xs font-black transition cursor-pointer select-none"
+                      >
+                        {submitting ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>正在启动智慧算法沙箱...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-3.5 h-3.5 fill-current" />
+                            <span>确认创建并开始执行任务</span>
+                          </>
+                        )}
+                      </button>
                     </div>
                   ) : (
-                    allDocs
-                      .filter(d => d.kbId === activeKbId)
-                      .map((doc) => {
-                        const isChecked = tempSelectedDocIds.includes(doc.id);
+                    /* Existing task workflow states and action operators */
+                    <div className="space-y-3">
+                      {/* Interactive control buttons */}
+                      <div className="flex flex-wrap gap-2 text-xs font-semibold pt-1">
+                        {/* Cancel Scraper/Creation Tasks */}
+                        {selectedTask.taskType === 'scraper' && ['pending', 'scraping'].includes(selectedTask.status) && (
+                          <button
+                            onClick={() => onCancelScraperTask(selectedTask.id)}
+                            className="flex items-center gap-1.5 px-3 py-2 bg-slate-900 border border-slate-805 text-slate-300 hover:bg-slate-800 rounded-lg transition"
+                          >
+                            <StopCircle className="w-3.5 h-3.5 text-slate-400" />
+                            <span>取消采集</span>
+                          </button>
+                        )}
+                        {selectedTask.taskType === 'creation' && ['pending', 'researching', 'writing', 'suggesting'].includes(selectedTask.status) && (
+                          <button
+                            onClick={() => onCancelCreationTask(selectedTask.id)}
+                            className="flex items-center gap-1.5 px-3 py-2 bg-slate-900 border border-slate-805 text-slate-300 hover:bg-slate-800 rounded-lg transition"
+                          >
+                            <StopCircle className="w-3.5 h-3.5 text-slate-400" />
+                            <span>取消创作进程</span>
+                          </button>
+                        )}
+
+                        {/* Retry Scraper/Creation Tasks */}
+                        {selectedTask.taskType === 'scraper' && ['failed', 'cancelled'].includes(selectedTask.status) && (
+                          <button
+                            onClick={() => onRetryScraperTask(selectedTask.id)}
+                            className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 animate-none" />
+                            <span>重新启动执行</span>
+                          </button>
+                        )}
+                        {selectedTask.taskType === 'creation' && ['failed', 'cancelled'].includes(selectedTask.status) && (
+                          <button
+                            onClick={() => onRetryCreationTask(selectedTask.id)}
+                            className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 animate-none" />
+                            <span>重新起草撰写</span>
+                          </button>
+                        )}
+
+                        {/* Delete tasks */}
+                        {selectedTask.taskType === 'scraper' && (
+                          <button
+                            onClick={() => {
+                              if (window.confirm("确定要删除此采集流质日志档案吗？")) {
+                                onDeleteScraperTask(selectedTask.id);
+                                setSelectedTask(null);
+                              }
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-2 bg-rose-950/20 border border-rose-900 text-rose-350 hover:bg-rose-950/40 rounded-lg transition ml-auto"
+                            title="一键销毁"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>销毁记录</span>
+                          </button>
+                        )}
+                        {selectedTask.taskType === 'creation' && (
+                          <button
+                            onClick={() => {
+                              if (window.confirm("确定要删除此写作大作的轨迹及成品吗？")) {
+                                onDeleteCreationTask(selectedTask.id);
+                                setSelectedTask(null);
+                              }
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-2 bg-rose-950/20 border border-rose-900 text-rose-350 hover:bg-rose-950/40 rounded-lg transition ml-auto"
+                            title="一键销毁"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>销毁创作</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* B. Execution Live Logs terminal console */}
+                <div className="flex-1 flex flex-col min-h-[180px] bg-slate-950 border border-slate-800 rounded-xl overflow-hidden">
+                  <div className="p-3 bg-slate-900/40 border-b border-slate-805 flex items-center justify-between text-[11px] font-mono text-slate-400 select-none shrink-0">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-505 animate-ping"></span>
+                      <span>LIVE TERMINAL CONSOLE LOGS OUTPUT</span>
+                    </span>
+                    <button 
+                      onClick={() => {
+                        if (logTerminalRef.current) {
+                          logTerminalRef.current.scrollTop = logTerminalRef.current.scrollHeight;
+                        }
+                      }}
+                      className="text-[9px] hover:text-white"
+                    >
+                      [滚动置底]
+                    </button>
+                  </div>
+
+                  <div 
+                    ref={logTerminalRef}
+                    className="flex-1 p-4 overflow-y-auto font-mono text-[10px] text-emerald-400 leading-normal space-y-1.5 text-left custom-scrollbar"
+                  >
+                    {isDraft ? (
+                      <div className="text-slate-500 italic space-y-1">
+                        <p>&gt; terminal_stdout: awaiting_parameters...</p>
+                        <p>&gt; 在左侧分栏输入并点击'确认开始执行'，底层AI引擎进程将实时映射日志于此。</p>
+                      </div>
+                    ) : (
+                      (!selectedTask.logs || selectedTask.logs.length === 0) ? (
+                        <p className="text-slate-650 italic">&gt; [INFO] 已经激活高维执行沙箱。尚未收集到新的日志记录...</p>
+                      ) : (
+                        selectedTask.logs.map((log, index) => (
+                          <div key={index} className="border-b border-slate-900/60 pb-0.5 mb-1 text-emerald-300">
+                            <span className="text-slate-600 mr-2.5 font-bold">[{index + 1}]</span>
+                            <span className="whitespace-pre-wrap">{log}</span>
+                          </div>
+                        ))
+                      )
+                    )}
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          ) : (
+            /* Middle Col Collapsed Strip */
+            <div 
+              onClick={() => setColStatusOpen(true)}
+              className="w-12 bg-white hover:bg-slate-50 border-r border-slate-200 flex flex-col items-center py-4 cursor-pointer gap-2 select-none group"
+            >
+              <Eye className="w-4 h-4 text-slate-400 group-hover:text-slate-705" />
+              <div className="h-6 w-[1.5px] bg-slate-200 my-1" />
+              <span className="font-bold text-[10px] uppercase tracking-widest text-slate-500" style={{ writingMode: 'vertical-rl' }}>
+                [02] 进程运行控制台
+              </span>
+            </div>
+          )}
+
+          {/* ====================================================
+              COLUMN 3: TASK RESULTS / VALUE (RIGHT)
+             ==================================================== */}
+          {colResultOpen ? (
+            <div className="flex-1 min-w-0 border-l border-slate-200 bg-white flex flex-col h-full overflow-hidden transition-all duration-300">
+              <div className="p-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2 text-slate-705 font-bold text-xs select-none">
+                  <Award className="w-4 h-4 text-emerald-555" />
+                  <span>[03] 沙箱创造成果与归档</span>
+                </div>
+                <button
+                  onClick={() => setColResultOpen(false)}
+                  className="p-1 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded transition"
+                  title="收起此栏"
+                >
+                  <EyeOff className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 text-left custom-scrollbar">
+                {isDraft ? (
+                  /* Drafting Output graphics */
+                  <div className="text-center py-20 px-4 text-slate-600 flex flex-col justify-center items-center h-full">
+                    <LayoutGrid className="w-10 h-10 mb-3 text-slate-700 animate-pulse" />
+                    <h5 className="text-xs font-bold text-slate-400">成果产出区域</h5>
+                    <p className="text-[10px] text-slate-550 mt-1.5 leading-relaxed font-normal">
+                      目前该流仍处于“配置起草中”状态。完成参数设定并启动执行流后，采集清洗落库文章数、反解提取的笔触语气调性、爆款创作成品，均将集中在此区域内无缝呈现。
+                    </p>
+                  </div>
+                ) : (
+                  /* ====================================
+                     EXISTING TASK VALUE RENDERS
+                     ==================================== */
+                  <div className="space-y-4">
+                    
+                    {/* A. Scraper Task values */}
+                    {selectedTask.taskType === 'scraper' && (
+                      <div className="space-y-4">
+                        <div className="bg-indigo-50/50 border border-indigo-100 p-4 rounded-xl text-center select-none shadow-3xs">
+                          <span className="block text-[10px] text-slate-500 uppercase font-bold">成功采集清洗段落篇数</span>
+                          <span className="block text-3xl font-black text-indigo-650 mt-2">
+                             ✨ {selectedTask.docsScrapedCount ?? 0} <span className="text-xs">篇</span>
+                          </span>
+                        </div>
                         
-                        const handleToggle = () => {
-                          if (isChecked) {
-                            setTempSelectedDocIds(prev => prev.filter(id => id !== doc.id));
+                        <div className="space-y-1.5">
+                          <span className="text-[10.5px] font-bold text-slate-750 block pb-1 border-b border-slate-200">入库文章及摘要映射 :</span>
+                          {allDocs.filter(d => d.kbId === selectedTask.kbId).length === 0 ? (
+                            <p className="text-[10px] font-normal leading-relaxed text-slate-400 italic py-6 text-center">空空如也，尚未采集到可用范章碎片</p>
+                          ) : (
+                            <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+                              {allDocs
+                                .filter(d => d.kbId === selectedTask.kbId)
+                                .map((doc, idx) => (
+                                  <div key={doc.id} className="p-2.5 bg-slate-50 border border-slate-150 rounded-lg text-xs leading-relaxed text-slate-700 shadow-4xs">
+                                    <span className="text-[10px] block font-bold text-indigo-700 font-mono">[{idx + 1}] {doc.title}</span>
+                                    <p className="text-[9.5px] text-slate-500 line-clamp-2 mt-1 leading-normal font-normal">
+                                      {doc.content}
+                                    </p>
+                                  </div>
+                                ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* B. Persona Extracted traits values */}
+                    {selectedTask.taskType === 'persona' && (
+                      <div className="space-y-4">
+                        {selectedTask.status !== 'completed' ? (
+                          <div className="text-center py-12 text-slate-500 border border-dashed border-slate-200 rounded-xl p-4 bg-slate-50/50">
+                            <span className="inline-block animate-spin rounded-full w-4.5 h-4.5 border-t-2 border-indigo-650 mb-1"></span>
+                            <p className="text-[10px] font-medium text-slate-600">算法调性解析中。提取克隆拟合人设后将立即为您展示语气调性细节骨骼。</p>
+                          </div>
+                        ) : (() => {
+                          const matchingPersona = personas.find(p => p.id === selectedTask.personaId);
+                          if (!matchingPersona) {
+                            return <p className="text-xs text-slate-500 italic text-center">克隆人设提取失败，未能形成有效调性资产模型</p>;
+                          }
+                          return (
+                            <div className="space-y-3.5">
+                              <div className="p-3 bg-emerald-50 border border-emerald-250 text-emerald-805 rounded-xl leading-normal text-xs text-left font-normal select-none shadow-3xs">
+                                <h5 className="font-extrabold text-[12.5px] text-emerald-800 mb-1">萃成调性: {matchingPersona.name}</h5>
+                                <p className="text-[9.5px] text-slate-600 leading-relaxed font-mono">{matchingPersona.description}</p>
+                              </div>
+
+                              <div className="space-y-1.5">
+                                <span className="text-[9px] font-black uppercase text-slate-550 font-mono block">语气态度约束 (Tone)</span>
+                                <p className="p-2.5 bg-slate-50 border border-slate-200/80 rounded-lg text-[10.5px] text-slate-700 leading-relaxed font-medium shadow-4xs">
+                                  {matchingPersona.extractedTraits.tone}
+                                </p>
+                              </div>
+
+                              <div className="space-y-1.5">
+                                <span className="text-[9px] font-black uppercase text-slate-550 font-mono block">常用修辞风骨 (Writing Style)</span>
+                                <p className="p-2.5 bg-slate-50 border border-slate-200/80 rounded-lg text-[10.5px] text-slate-705 leading-relaxed font-normal shadow-4xs">
+                                  {matchingPersona.extractedTraits.writingStyle}
+                                </p>
+                              </div>
+
+                              <div className="space-y-1.5">
+                                <span className="text-[9px] font-black uppercase text-slate-555 font-mono block">常高频词组切口</span>
+                                <div className="flex flex-wrap gap-1">
+                                  {safeList(matchingPersona.extractedTraits.keywords).map((kw, i) => (
+                                    <span key={i} className="text-[9.5px] font-bold font-mono bg-indigo-50 text-indigo-700 border border-indigo-150 px-2 py-0.5 rounded shadow-4xs">
+                                      #{kw}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {matchingPersona.extractedTraits.samplePassage && (
+                                <div className="space-y-1.5">
+                                  <span className="text-[9px] font-black uppercase text-slate-550 font-mono block">典型拟模范例小卡</span>
+                                  <p className="p-2.5 bg-emerald-50/40 border-l-[3px] border-emerald-500 text-[10px] text-slate-700 italic border-y border-r border-emerald-100 rounded-r-lg whitespace-normal font-mono select-none">
+                                    "{matchingPersona.extractedTraits.samplePassage}"
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
+
+                    {/* C. Creation generated values (Suggested topics selection / Resulting article) */}
+                    {selectedTask.taskType === 'creation' && (
+                      <div className="space-y-4">
+                        
+                        {/* 1. Topics Selection List mapping when still in 'suggesting' stage */}
+                        {selectedTask.status === 'suggesting' && selectedTask.suggestedTopics && (
+                          <div className="p-3 bg-indigo-50 border border-indigo-200/60 rounded-xl text-left space-y-2 shadow-3xs">
+                            <span className="text-[10px] text-indigo-750 font-black block leading-normal uppercase">
+                              💡 选题库裂变挑选 (已暂停，需人工决策介入):
+                            </span>
+                            <p className="text-[9.5px] text-slate-600 leading-relaxed font-medium">请在以下多维方案选题成果中选择任意一个意向，新文将即时按此选题自适应扩展直写物料:</p>
+                            <div className="space-y-2 mt-2">
+                              {selectedTask.suggestedTopics.map((topic, idx) => (
+                                <div
+                                  key={idx}
+                                  onClick={() => handleSelectTopicSubmit(selectedTask.id, topic)}
+                                  className="p-2.5 bg-white hover:bg-indigo-50/40 hover:border-indigo-300 cursor-pointer rounded-lg border border-slate-205 leading-normal text-xs text-slate-800 shadow-4xs transition"
+                                >
+                                  <span className="text-indigo-600 mr-1.5 font-bold">[{idx + 1}]</span>
+                                  <span>{topic}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 2. Generation Completed draft markdown block rendering */}
+                        {selectedTask.status === 'completed' && selectedTask.generatedContent && (
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10.5px] font-bold text-emerald-600 flex items-center gap-1 leading-normal select-none">
+                                <Check className="w-3.5 h-3.5" /> 创稿文案成品
+                              </span>
+                              
+                              <button
+                                onClick={() => handleCopyText(selectedTask.generatedContent || "", selectedTask.id)}
+                                className="flex items-center gap-1 text-[10px] font-bold text-indigo-650 bg-indigo-50 hover:bg-slate-100 border border-indigo-250 rounded px-2 py-1 shadow-4xs transition"
+                              >
+                                {copiedTaskId === selectedTask.id ? (
+                                  <>
+                                    <Check className="w-3 h-3 text-emerald-600" />
+                                    <span>文字已复制</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3 h-3" />
+                                    <span>复制全文</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+
+                            {/* Text preview box */}
+                            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-[10.5px] text-slate-800 leading-relaxed font-mono select-text whitespace-pre-wrap max-h-80 overflow-y-auto shadow-inner">
+                              {selectedTask.generatedContent}
+                            </div>
+
+                            {/* Document Archive tools */}
+                            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5 text-left font-normal mt-3 shadow-3xs">
+                              <span className="block text-[10px] font-bold text-slate-705 leading-normal">💼 快速归纳充入知识分类文件夹:</span>
+                              
+                              <div className="flex flex-col sm:flex-row gap-1.5">
+                                <select
+                                  value={archiveKbId}
+                                  onChange={(e) => {
+                                    setArchiveKbId(e.target.value);
+                                    setArchiveSuccess(false);
+                                  }}
+                                  className="bg-white text-slate-805 text-[10.5px] p-2 rounded border border-slate-200 outline-none cursor-pointer flex-1 focus:border-indigo-500 transition"
+                                >
+                                  <option value="">选取对应目标知识库...</option>
+                                  {kbs.map(k => (
+                                    <option key={k.id} value={k.id}>{k.name}</option>
+                                  ))}
+                                </select>
+
+                                <button
+                                  onClick={() => handleArchiveSubmit(selectedTask.id)}
+                                  disabled={!archiveKbId || archiveSuccess}
+                                  className={`px-3 py-1.5 text-[9.5px] font-black rounded transition shrink-0 ${
+                                    (!archiveKbId || archiveSuccess)
+                                      ? "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200"
+                                      : "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-4xs"
+                                  }`}
+                                >
+                                  {archiveSuccess ? "已成功落库文件夹" : "确认落库"}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Loading stage */}
+                        {['researching', 'writing', 'pending'].includes(selectedTask.status) && (
+                          <div className="py-16 text-center border border-dashed border-indigo-250 bg-indigo-50/20 rounded-xl flex flex-col p-4 justify-center items-center">
+                            <Loader2 className="w-6 h-6 animate-spin text-indigo-650 mb-2" />
+                            <h5 className="text-xs font-bold text-indigo-850">正在按要求研拟大作草稿全文...</h5>
+                            <p className="text-[9.5px] text-slate-600 leading-relaxed mt-1">大约需要 10 ~ 20 秒。后台沙箱会自动运作，研拟完毕在这里立即可视大做文稿，可稍作休息。</p>
+                          </div>
+                        )}
+
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* Right Col Collapsed Strip */
+            <div 
+              onClick={() => setColResultOpen(true)}
+              className="w-12 bg-white hover:bg-slate-50 border-l border-slate-200 flex flex-col items-center py-4 cursor-pointer gap-2 select-none group"
+            >
+              <Eye className="w-4 h-4 text-slate-400 group-hover:text-slate-705" />
+              <div className="h-6 w-[1.5px] bg-slate-200 my-1" />
+              <span className="font-bold text-[10px] uppercase tracking-widest text-slate-500" style={{ writingMode: 'vertical-rl' }}>
+                [03] 沙箱结果大作输出栏
+              </span>
+            </div>
+          )}
+
+        </div>
+
+        {/* ====================================================
+            NESTS SUB-SELECTOR FOR DOC PICKER (Used in Creation references)
+           ==================================================== */}
+        {isKbDocsSelectorOpen && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs" style={{ backgroundColor: 'rgba(15, 23, 42, 0.4)' }} id="nested-docs-selector">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-2xl h-[70vh] flex flex-col overflow-hidden text-left" id="inner-docs-selector-modal">
+              
+              {/* Header */}
+              <div className="p-4 bg-slate-50 border-b border-slate-150 flex items-center justify-between shrink-0">
+                <div className="text-left">
+                  <h4 className="text-xs font-bold text-slate-800 flex items-center gap-2">
+                    <Database className="w-4.5 h-4.5 text-indigo-500" />
+                    <span>勾选事实参考文献或范章定位</span>
+                  </h4>
+                  <p className="text-[10px] text-slate-450 mt-1">
+                    选择并锁定作为本文创制依据的经典参考信息。支持多篇章勾选。
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsKbDocsSelectorOpen(false)}
+                  className="text-slate-400 hover:text-slate-700 p-1 bg-white border border-slate-200 rounded transition shrink-0"
+                >
+                  <XCircle className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Split layout: left folder & right doc files */}
+              <div className="flex-1 flex overflow-hidden min-h-0 bg-slate-50/50" id="docs-split-view">
+                
+                {/* LEFT FOLDER COLUMN */}
+                <div className="w-1/3 border-r border-slate-150 p-3.5 space-y-2 overflow-y-auto bg-slate-50">
+                  <div className="text-left pb-1 border-b border-slate-200 select-none">
+                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">
+                      参考文件夹及目录
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {kbs.length === 0 ? (
+                      <p className="text-[10px] italic text-slate-400 text-center py-6">库中无预设文件夹</p>
+                    ) : (
+                      kbs.map(kb => {
+                        const kbDocs = allDocs.filter(d => d.kbId === kb.id);
+                        const kbDocIds = kbDocs.map(d => d.id);
+                        
+                        const isAllDocsChecked = kbDocIds.length > 0 && kbDocIds.every(id => tempSelectedDocIds.includes(id));
+                        const isSelectedKb = activeKbId === kb.id;
+
+                        const handleKbToggle = (e: React.MouseEvent) => {
+                          e.stopPropagation();
+                          if (isAllDocsChecked || tempSelectedKbIds.includes(kb.id)) {
+                            setTempSelectedKbIds(prev => prev.filter(id => id !== kb.id));
+                            setTempSelectedDocIds(prev => prev.filter(id => !kbDocIds.includes(id)));
                           } else {
-                            setTempSelectedDocIds(prev => [...prev, doc.id]);
+                            setTempSelectedKbIds(prev => [...new Set([...prev, kb.id])]);
+                            if (kbDocs.length > 0) {
+                              setTempSelectedDocIds(prev => [...new Set([...prev, ...kbDocIds])]);
+                            }
                           }
                         };
 
                         return (
                           <div
-                            key={doc.id}
-                            onClick={handleToggle}
-                            className={`p-2.5 rounded-xl border transition-all duration-155 cursor-pointer text-left flex items-start gap-2.5 ${
-                              isChecked
-                                ? 'bg-indigo-50/15 border-indigo-200'
-                                : 'border-slate-100 bg-slate-50/20 hover:bg-slate-50 hover:border-slate-205'
+                            key={kb.id}
+                            onClick={() => setActiveKbId(kb.id)}
+                            className={`p-2 rounded-lg border text-left flex items-start gap-2 cursor-pointer transition ${
+                              isSelectedKb 
+                                ? 'bg-indigo-50 border-indigo-205 text-indigo-700 font-bold shadow-3xs'
+                                : 'border-transparent text-slate-505 hover:bg-slate-100 hover:text-slate-800'
                             }`}
                           >
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={() => {}} // Swallowed in click
-                              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-550 h-3.5 w-3.5 cursor-pointer mt-0.5 shrink-0"
-                            />
-                            <div className="flex-1 min-w-0 text-slate-705">
-                              <span className="text-[11.5px] font-bold block truncate">{doc.title}</span>
-                              <span className="text-[9.5px] text-slate-400 mt-0.5 block font-mono">
-                                (录入时间: {new Date(doc.createdAt).toLocaleDateString()} | 全文: {doc.content.length} 字)
-                              </span>
+                            <div className="pt-0.5 shrink-0" onClick={handleKbToggle}>
+                              <input
+                                type="checkbox"
+                                checked={isAllDocsChecked || (kbDocs.length === 0 && tempSelectedKbIds.includes(kb.id))}
+                                onChange={() => {}} // Swallowed in click
+                                className="rounded border-slate-300 bg-white text-indigo-600 h-3.5 w-3.5 cursor-pointer focus:ring-indigo-500"
+                              />
                             </div>
+                            <span className="text-[11px] truncate flex-grow block">{kb.name}</span>
+                            <span className="text-[9px] bg-white border border-slate-200 text-slate-500 px-1.5 rounded font-mono font-bold shrink-0">
+                              {kbDocs.length}
+                            </span>
                           </div>
                         );
                       })
-                  )}
+                    )}
+                  </div>
+                </div>
+
+                {/* RIGHT ARTICLES INDEX */}
+                <div className="flex-1 flex flex-col h-full bg-white">
+                  <div className="p-2.5 bg-slate-50 border-b border-slate-150 text-left shrink-0">
+                    <span className="text-[9px] font-black text-slate-505 uppercase tracking-widest">
+                      定位文献草稿篇章
+                    </span>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-3.5 space-y-2 bg-white">
+                    {allDocs.filter(d => d.kbId === activeKbId).length === 0 ? (
+                      <div className="text-center py-12 text-slate-400 bg-white">
+                        <p className="text-xs italic">该目录下尚无被引文献范本成果。</p>
+                      </div>
+                    ) : (
+                      allDocs
+                        .filter(d => d.kbId === activeKbId)
+                        .map((doc) => {
+                          const isChecked = tempSelectedDocIds.includes(doc.id);
+                          const handleToggle = () => {
+                            if (isChecked) {
+                              setTempSelectedDocIds(prev => prev.filter(id => id !== doc.id));
+                            } else {
+                              setTempSelectedDocIds(prev => [...prev, doc.id]);
+                            }
+                          };
+
+                          return (
+                            <div
+                              key={doc.id}
+                              onClick={handleToggle}
+                              className={`p-2.5 rounded-xl border transition cursor-pointer text-left flex items-start gap-2.5 ${
+                                isChecked
+                                  ? 'bg-indigo-50/70 border-indigo-200 text-indigo-900 shadow-3xs'
+                                  : 'bg-slate-50/55 border-slate-150 hover:bg-slate-100/50'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => {}} // Swallowed in click
+                                className="rounded border-slate-300 bg-white text-indigo-600 h-3.5 w-3.5 mt-0.5 shrink-0 cursor-pointer focus:ring-indigo-505"
+                              />
+                              <div className="min-w-0 flex-grow text-slate-700">
+                                <span className="text-[11px] font-extrabold block truncate text-slate-800">{doc.title}</span>
+                                <span className="text-[9px] text-slate-450 mt-0.5 block font-mono">
+                                  (录入时间: {new Date(doc.createdAt).toLocaleDateString()} | {doc.content.length} 字)
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })
+                    )}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Actions footer */}
+              <div className="p-3 bg-slate-50 border-t border-slate-150 flex items-center justify-between shrink-0">
+                <span className="text-[10px] text-slate-500">
+                  已精选锁定 <span className="font-bold text-indigo-650">{tempSelectedDocIds.length}</span> 篇文献段落作为灵流创稿依托
+                </span>
+
+                <div className="flex items-center gap-1.5 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setIsKbDocsSelectorOpen(false)}
+                    className="px-3.5 py-1.5 text-slate-500 border border-slate-205 bg-white rounded-lg hover:bg-slate-100 transition shadow-4xs font-bold"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCreatDocIds(tempSelectedDocIds);
+                      setIsKbDocsSelectorOpen(false);
+                    }}
+                    className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition shadow-3xs"
+                  >
+                    保存锁定
+                  </button>
                 </div>
               </div>
 
             </div>
+          </div>
+        )}
 
-            {/* Modal actions footer */}
-            <div className="p-3 bg-slate-50 border-t border-slate-150 flex items-center justify-between shrink-0 font-medium">
-              <span className="text-[10px] text-slate-450 leading-normal font-normal">
-                已在缓存中圈选了 <span className="font-bold text-indigo-655">{tempSelectedDocIds.length}</span> 篇事实文献
-              </span>
+      </div>
+    );
+  }
 
-              <div className="flex items-center gap-1.5 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setIsKbDocsSelectorOpen(false)}
-                  className="px-3.5 py-1.5 hover:bg-slate-100 text-slate-550 border border-slate-205 rounded-lg transition"
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCreatDocIds(tempSelectedDocIds);
-                    setIsKbDocsSelectorOpen(false);
-                  }}
-                  className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-705 text-white font-bold rounded-lg transition"
-                >
-                  保存关联圈选
-                </button>
+  // Helper safe mapper for arrays
+  function safeList<T>(list: T[] | undefined): T[] {
+    return list || [];
+  }
+
+  /* ====================================================
+     MAIN STREAM VIEWPORT (selectedTask IS NULL)
+     Two panels: persistent left create selection, and right list view.
+     ==================================================== */
+  return (
+    <div className="flex h-full min-h-0 overflow-hidden bg-slate-50" id="all-tasks-panel">
+      
+      {/* 2-Column Core Split Layout */}
+      <div className="flex-1 flex gap-5 p-5 min-h-0 overflow-hidden" id="workspace-main-split">
+        
+        {/* ====================================================
+            LEFT PERSISTENT PANEL: CREATE TASK QUICK PANEL
+           ==================================================== */}
+        <div className="w-[310px] bg-white rounded-2xl border border-slate-200/80 shadow-3xs flex flex-col p-4 shrink-0 h-full overflow-hidden text-left" id="sidebar-new-task-quick-selector">
+          <div className="border-b border-slate-100 pb-2.5 mb-2.5 shrink-0" id="quick-panel-top">
+            <h3 className="text-xs font-black text-slate-800 tracking-wider flex items-center gap-1.5 uppercase">
+              <Plus className="w-4 h-4 text-indigo-650" />
+              新建创意沙盒任务
+            </h3>
+            <p className="text-[10px] text-slate-400 font-normal leading-relaxed mt-1">
+              免除繁杂配置，点击下方特定模块即可秒级激活详情沙盒分栏进行参数拟定与启动执行。
+            </p>
+          </div>
+
+          <div className="flex-1 overflow-y-auto space-y-3.5 pr-0.5 custom-scrollbar" id="quick-panel-types-list">
+            
+            {/* 1. Scraper Module Card */}
+            <div 
+              onClick={() => handleInitiateDraft("scraper")}
+              className="p-3.5 bg-white border border-slate-150/90 rounded-xl hover:border-indigo-400 hover:bg-indigo-50/5 cursor-pointer transition flex items-start gap-3 shadow-3xs group"
+              title="新建文章/评论抓取清洗流水线"
+            >
+              <div className="p-2.5 bg-sky-50 text-sky-600 rounded-xl shrink-0 mt-0.5 group-hover:bg-sky-100 transition">
+                <Globe className="w-4 h-4" />
+              </div>
+              <div className="space-y-0.5 min-w-0 flex-1">
+                <h4 className="text-[11.5px] font-black text-slate-750">数据采集与网页爬取</h4>
+                <p className="text-[9.5px] text-slate-450 leading-relaxed font-normal">
+                  摄纳指定灵感目标网站、范文篇章，AI自动清洗去噪，完美落归指定的分类文件夹。
+                </p>
+                <div className="flex items-center gap-1 mt-1 font-bold text-[9px] text-indigo-600 transition opacity-0 group-hover:opacity-100">
+                  <span>直达配置页</span>
+                  <ArrowRight className="w-2.5 h-2.5" />
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Persona Engine Card */}
+            <div 
+              onClick={() => handleInitiateDraft("persona")}
+              className="p-3.5 bg-white border border-slate-150/90 rounded-xl hover:border-indigo-400 hover:bg-emerald-50/5 cursor-pointer transition flex items-start gap-3 shadow-3xs group"
+              title="新建人格写作态度反解克隆流水线"
+            >
+              <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl shrink-0 mt-0.5 group-hover:bg-emerald-100 transition">
+                <BrainCircuit className="w-4 h-4" />
+              </div>
+              <div className="space-y-0.5 min-w-0 flex-1">
+                <h4 className="text-[11.5px] font-black text-slate-750">写作调性人设萃取</h4>
+                <p className="text-[9.5px] text-slate-450 leading-relaxed font-normal">
+                  引入指定的典型范文集，深度反编译萃取写手的修辞风骨、特定口头词切口。
+                </p>
+                <div className="flex items-center gap-1 mt-1 font-bold text-[9px] text-emerald-600 transition opacity-0 group-hover:opacity-100">
+                  <span>直达配置页</span>
+                  <ArrowRight className="w-2.5 h-2.5" />
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Intelligent Content Creator Card */}
+            <div 
+              onClick={() => handleInitiateDraft("creation")}
+              className="p-3.5 bg-white border border-slate-150/90 rounded-xl hover:border-indigo-400 hover:bg-pink-50/5 cursor-pointer transition flex items-start gap-3 shadow-3xs group"
+              title="新建选题或全文命题起草流水线"
+            >
+              <div className="p-2.5 bg-pink-50 text-pink-600 rounded-xl shrink-0 mt-0.5 group-hover:bg-pink-100 transition">
+                <PenTool className="w-4 h-4" />
+              </div>
+              <div className="space-y-0.5 min-w-0 flex-1">
+                <h4 className="text-[11.5px] font-black text-slate-750">智能撰写文案大作</h4>
+                <p className="text-[9.5px] text-slate-450 leading-relaxed font-normal">
+                  圈选刚学成的克隆笔触、结合引经据典的大纲，并联网搜索，起草全文。
+                </p>
+                <div className="flex items-center gap-1 mt-1 font-bold text-[9px] text-pink-650 transition opacity-0 group-hover:opacity-100">
+                  <span>直达配置页</span>
+                  <ArrowRight className="w-2.5 h-2.5" />
+                </div>
               </div>
             </div>
 
           </div>
         </div>
-      )}
+
+        {/* ====================================================
+            RIGHT PANEL: FILTERABLE TASK ENGINE LISTS
+           ==================================================== */}
+        <div className="flex-1 bg-white rounded-2xl border border-slate-200/80 shadow-3xs flex flex-col overflow-hidden p-4" id="task-list-scaffolder">
+          
+          {/* Header row stats description */}
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100 select-none shrink-0 text-left" id="list-header-row">
+            <div>
+              <h2 className="text-[13px] font-extrabold text-slate-800 flex items-center gap-1.5">
+                <Layers className="w-4.5 h-4.5 text-indigo-650 animate-none" />
+                创意沙盒任务全景列表 ({allFilteredTasks.length})
+              </h2>
+              <p className="text-[10px] text-slate-450 mt-1">融合采集清洗、解密克隆、文案大作撰笔等流水线进程。</p>
+            </div>
+          </div>
+
+          {/* Type filters row & Status filters row */}
+          <div className="flex flex-col gap-2.5 md:flex-row md:items-center md:justify-between py-3 border-b border-dashed border-slate-100 shrink-0" id="list-filters-container">
+            
+            <div className="flex flex-wrap items-center gap-1.5" id="type-filter-group">
+              <span className="text-[9.5px] font-bold text-slate-400 select-none uppercase tracking-wide mr-1 mt-0.5">类型过滤:</span>
+              {[
+                { id: 'all', label: '全部列表' },
+                { id: 'scraper', label: '网页采集' },
+                { id: 'persona', label: '调性萃取' },
+                { id: 'creation', label: '爆款创稿' }
+              ].map(item => (
+                <button
+                  key={item.id}
+                  onClick={() => setTypeFilter(item.id as any)}
+                  className={`px-3 py-1 text-[10px] font-bold rounded-lg transition ${
+                    typeFilter === item.id 
+                      ? 'bg-slate-900 text-white' 
+                      : 'bg-slate-100 text-slate-500 hover:bg-slate-200/60'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center bg-slate-100 p-0.5 rounded-lg shrink-0" id="status-filter-group">
+              {[
+                { id: 'all', label: '全部状态' },
+                { id: 'running', label: '进行中' },
+                { id: 'completed', label: '已完成' },
+                { id: 'failed', label: '已失败' }
+              ].map(st => (
+                <button
+                  key={st.id}
+                  onClick={() => setStatusFilter(st.id as any)}
+                  className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition ${
+                    statusFilter === st.id 
+                      ? 'bg-white text-slate-850 shadow-sm' 
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  {st.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Search filters input */}
+          <div className="py-2.5 shrink-0" id="list-search-input-wrap">
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                <Search className="h-3.5 w-3.5 text-slate-405" />
+              </span>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="按任务标题、内容立意、主旨大纲或者源地址搜索..."
+                className="w-full bg-slate-50 hover:bg-slate-100/50 focus:bg-white text-xs px-3 py-2 border border-slate-205 focus:border-indigo-500 rounded-xl pl-9 outline-none transition font-sans"
+              />
+            </div>
+          </div>
+
+          {/* Scroller list content */}
+          <div className="flex-1 overflow-y-auto space-y-3.5 pr-0.5 mt-2 custom-scrollbar" id="list-tasks-wrapper">
+            {allFilteredTasks.length === 0 ? (
+              <div className="py-24 text-center border-2 border-dashed border-slate-100 rounded-2xl bg-slate-50/15 flex flex-col items-center justify-center h-full">
+                <Layers className="w-8 h-8 text-slate-300 mb-2" />
+                <p className="text-xs font-bold text-slate-600">当前没有检索到任何创意任务痕迹</p>
+                <p className="text-[10px] text-slate-450 mt-1 max-w-sm leading-normal">
+                  您可以立刻使用<b>左侧 persistent panel</b> 选项来发起新的数据抓取、人设提纯深度解析或智能创稿任务！
+                </p>
+              </div>
+            ) : (
+              allFilteredTasks.map((t) => {
+                const titleHeading = t.taskType === 'creation' 
+                  ? (t.selectedTopic || t.title || t.theme) 
+                  : t.name;
+
+                const isInterventionRequired = t.status === 'suggesting';
+
+                return (
+                  <div
+                    key={t.id}
+                    onClick={() => {
+                      // Set default column views to open
+                      setColInfoOpen(true);
+                      setColStatusOpen(true);
+                      setColResultOpen(true);
+                      setSelectedTask(t);
+                    }}
+                    className={`p-4 border ${
+                      isInterventionRequired 
+                        ? 'border-amber-300 bg-amber-50/20 hover:border-amber-450 hover:bg-amber-50/40 shadow-xs' 
+                        : 'border-slate-150 bg-white hover:border-indigo-200 hover:bg-slate-50/50 shadow-3xs'
+                    } rounded-xl cursor-pointer transition flex flex-col justify-between gap-3 shadow-3xs text-left group`}
+                  >
+                    <div className="space-y-2 flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {getTypeBadge(t.taskType)}
+                        <h3 className="font-extrabold text-slate-800 text-[12.5px] truncate max-w-sm sm:max-w-md">{titleHeading}</h3>
+                        {getStatusBadge(t.status)}
+                      </div>
+
+                      {isInterventionRequired && (
+                        <div className="bg-amber-550/10 border border-amber-250 text-amber-850 text-[10px] px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1.5 leading-normal animate-pulse select-none">
+                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-600 animate-ping shrink-0" />
+                          <span>待人工干预协同：系统流程已暂停，需人工确认/介入后方可继续执行下一步</span>
+                        </div>
+                      )}
+
+                      <div className="text-[10.5px] text-slate-500 font-normal space-y-0.5 leading-relaxed pl-0.5">
+                        {t.taskType === 'scraper' && (
+                          <p className="truncate"><span className="text-slate-400">网页路径:</span> <span className="font-mono text-indigo-650">{t.url}</span></p>
+                        )}
+                        {t.taskType === 'persona' && (
+                          <p className="truncate">
+                            <span className="text-slate-400">参考事实语料:</span> <span className="text-slate-705 font-bold">包含 {safeList(t.kbIds).length} 个特定的特定语流分类目录</span>
+                          </p>
+                        )}
+                        {t.taskType === 'creation' && (
+                          <p className="truncate">
+                            <span className="text-slate-400">主题内容大纲:</span> <span className="text-slate-705 font-bold">{t.theme}</span>
+                          </p>
+                        )}
+                        
+                        <div className="flex items-center gap-1.5 text-[10px] text-slate-400 pt-0.5 font-sans font-normal">
+                          <span>创建日期: {new Date(t.createdAt).toLocaleString()}</span>
+                          <span>|</span>
+                          <span className="font-mono select-all">流水 ID: {t.id}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 flex items-center justify-between sm:justify-end gap-1.5 border-t border-slate-100 sm:border-0 pt-2 sm:pt-0">
+                      <span className="text-[11px] font-bold text-indigo-500 group-hover:underline flex items-center gap-0.5 py-1">
+                        <span>配置详情页</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+        </div>
+      </div>
 
     </div>
   );

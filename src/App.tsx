@@ -24,7 +24,7 @@ export default function App() {
 
   // Task Space States
   const [spaces, setSpaces] = useState<TaskSpace[]>([]);
-  const [selectedSpaceId, setSelectedSpaceId] = useState<string>("space-1");
+  const [selectedSpaceId, setSelectedSpaceId] = useState<string>("space-default");
   const [isSidebarAddSpaceOpen, setIsSidebarAddSpaceOpen] = useState(false);
   const [newSpaceName, setNewSpaceName] = useState("");
   const [spaceSubTab, setSpaceSubTab] = useState<'all' | 'folders'>('all');
@@ -220,7 +220,7 @@ export default function App() {
       await fetch(`/api/spaces/${id}`, { method: "DELETE" });
       setSpaces((prev) => prev.filter(s => s.id !== id));
       if (selectedSpaceId === id) {
-        setSelectedSpaceId("space-1");
+        setSelectedSpaceId("space-default");
       }
       // Re-fetch tasks since they were cascade deleted
       fetchScraperTasks();
@@ -646,7 +646,9 @@ export default function App() {
                 }`}
               >
                 <button
-                  onClick={() => setActiveTab('task_space')}
+                  onClick={() => {
+                    setActiveTab('task_space');
+                  }}
                   className="flex-1 flex items-center gap-3.5 px-3.5 py-3 text-left text-xs"
                 >
                   {activeTab === 'task_space' && (
@@ -669,45 +671,92 @@ export default function App() {
                 </button>
               </div>
 
-              {isSidebarAddSpaceOpen && (
-                <div className="mx-2 p-3 bg-slate-900/80 rounded-xl border border-slate-800/60 flex flex-col gap-2 mt-0.5" id="sidebar-add-space-submenu">
-                  <div className="text-[10px] text-slate-400 font-bold tracking-wider mb-1">新增二级菜单: 新建工作空间</div>
-                  <input
-                    type="text"
-                    placeholder="输入工作空间名称..."
-                    value={newSpaceName}
-                    onChange={(e) => setNewSpaceName(e.target.value)}
-                    className="w-full bg-slate-950 text-white text-[11px] px-2.5 py-1.5 rounded-lg border border-slate-800 focus:border-indigo-500 outline-none transition"
-                    id="sidebar-new-space-input"
-                  />
-                  <div className="flex items-center justify-end gap-1.5 mt-1">
-                    <button
+              {/* Workspaces list submenu in sidebar */}
+              <div className="mx-1 px-1.5 flex flex-col gap-1 mt-0.5" id="sidebar-spaces-submenu">
+                {spaces.map((s) => {
+                  const isSelected = selectedSpaceId === s.id && activeTab === 'task_space';
+                  return (
+                    <div
+                      key={s.id}
                       onClick={() => {
-                        setIsSidebarAddSpaceOpen(false);
-                        setNewSpaceName("");
+                        setSelectedSpaceId(s.id);
+                        setActiveTab('task_space');
                       }}
-                      className="px-2 py-1 text-[10px] text-slate-400 hover:text-white hover:bg-slate-800 rounded transition font-medium"
+                      className={`group/space relative w-full flex items-center justify-between pl-8 pr-2.5 py-1.5 rounded-lg text-[11px] font-medium transition cursor-pointer select-none ${
+                        isSelected
+                          ? 'bg-slate-800/60 text-indigo-300 font-bold'
+                          : 'text-slate-400 hover:bg-slate-900/40 hover:text-slate-200'
+                      }`}
                     >
-                      取消
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (newSpaceName.trim()) {
+                      <span className="truncate pr-4 flex items-center gap-1.5">
+                        <span className={`w-1 h-1 rounded-full ${isSelected ? "bg-indigo-400" : "bg-slate-600"}`}></span>
+                        {s.name}
+                      </span>
+                      
+                      {/* Delete workspace directly from sidebar (not default) */}
+                      {!["space-default", "space-1", "space-2"].includes(s.id) && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteSpace(s.id, e);
+                          }}
+                          className="p-0.5 rounded text-slate-500 hover:text-rose-400 hover:bg-slate-800 opacity-0 group-hover/space:opacity-100 transition shrink-0"
+                          title="删除空间"
+                        >
+                          <Trash2 className="w-2.5 h-2.5" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Inline add space form under spaces list submenu when triggered by plus icon */}
+                {isSidebarAddSpaceOpen && (
+                  <div className="ml-7 p-2.5 mt-1 bg-slate-900/60 rounded-xl border border-slate-800/60 flex flex-col gap-2" id="sidebar-add-space-submenu">
+                    <div className="text-[10px] text-slate-450 font-bold tracking-wider">新建工作空间</div>
+                    <input
+                      type="text"
+                      placeholder="输入空间名称..."
+                      value={newSpaceName}
+                      onChange={(e) => setNewSpaceName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && newSpaceName.trim()) {
                           handleCreateSpace(newSpaceName.trim());
                         }
                       }}
-                      disabled={!newSpaceName.trim()}
-                      className={`px-3 py-1 text-[10px] font-bold rounded transition ${
-                        newSpaceName.trim()
-                          ? "bg-indigo-600 hover:bg-indigo-700 text-white"
-                          : "bg-slate-850 text-slate-600 cursor-not-allowed"
-                      }`}
-                    >
-                      保存
-                    </button>
+                      className="w-full bg-slate-950 text-white text-[11px] px-2.5 py-1.5 rounded-lg border border-slate-850 focus:border-indigo-500 outline-none transition"
+                      id="sidebar-new-space-input"
+                      autoFocus
+                    />
+                    <div className="flex items-center justify-end gap-1.5">
+                      <button
+                        onClick={() => {
+                          setIsSidebarAddSpaceOpen(false);
+                          setNewSpaceName("");
+                        }}
+                        className="px-2 py-1 text-[10px] text-slate-450 hover:text-white hover:bg-slate-800 rounded transition font-medium"
+                      >
+                        取消
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (newSpaceName.trim()) {
+                            handleCreateSpace(newSpaceName.trim());
+                          }
+                        }}
+                        disabled={!newSpaceName.trim()}
+                        className={`px-3 py-1 text-[10px] font-bold rounded transition ${
+                          newSpaceName.trim()
+                            ? "bg-indigo-600 hover:bg-indigo-700 text-white"
+                            : "bg-slate-800 text-slate-500 cursor-not-allowed"
+                        }`}
+                      >
+                        保存
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -812,57 +861,7 @@ export default function App() {
           )}
 
           {activeTab === 'task_space' && (
-            <div className="flex h-full min-h-0 overflow-hidden bg-slate-50 gap-6" id="workspaces-root-container">
-              {/* Inner Left: Workspaces Sidebar */}
-              <div className="w-72 bg-white rounded-2xl border border-slate-200/80 shadow-sm flex flex-col p-4 shrink-0 h-full overflow-hidden" id="workspace-spaces-sidebar">
-                <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100" id="spaces-sidebar-header">
-                  <h4 className="text-xs font-bold text-slate-800 tracking-wider">主创工作空间 ({spaces.length})</h4>
-                </div>
-
-                <div className="flex-1 overflow-y-auto space-y-2 pr-1" id="spaces-list-scroller">
-                  {spaces.map((s) => {
-                    const isSelected = selectedSpaceId === s.id;
-                    return (
-                      <div
-                        key={s.id}
-                        onClick={() => setSelectedSpaceId(s.id)}
-                        className={`p-3 rounded-xl border text-left cursor-pointer transition relative group select-none ${
-                          isSelected
-                            ? "bg-indigo-50/20 border-indigo-200 ring-1 ring-indigo-50/20 shadow-sm"
-                            : "bg-white border-slate-150/80 hover:bg-slate-50/70"
-                        }`}
-                      >
-                        <h5 className={`text-xs font-bold truncate ${isSelected ? "text-indigo-700" : "text-slate-700"}`}>
-                          {s.name}
-                        </h5>
-                        <p className="text-[10px] text-slate-400 mt-1 line-clamp-2 select-none leading-relaxed">
-                          {s.description || "暂无描述信息"}
-                        </p>
-                        
-                        {/* Delete custom spaces */}
-                        {!["space-1", "space-2"].includes(s.id) && (
-                          <button
-                            onClick={(e) => handleDeleteSpace(s.id, e)}
-                            className="absolute right-2 top-2 p-1 hover:bg-slate-100 rounded text-slate-450 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition"
-                            title="删除此空间"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                
-                {/* Tiny workspace helper card */}
-                <div className="mt-4 p-3 bg-slate-50 border border-slate-200/80 rounded-xl" id="space-sidebar-tip">
-                  <p className="text-[10px] text-slate-500 font-normal leading-relaxed text-left flex items-start gap-1.5">
-                    <Terminal className="w-3.5 h-3.5 text-indigo-500 shrink-0 mt-0.5" />
-                    <span>每个空间均为独立创意沙盒。空间内的<b>数据采集</b>、<b>人格特征萃取</b>与<b>智能内容创作</b>为三类平行的独立任务，并无先后依赖关系，均由您按需求独立创建和执行。</span>
-                  </p>
-                </div>
-              </div>
-
+            <div className="flex-1 flex flex-col h-full min-h-0 bg-slate-50 overflow-hidden" id="workspaces-root-container">
               {/* Inner Right: Current Space Workflow Content */}
               <div className="flex-1 bg-white rounded-2xl border border-slate-200/80 shadow-sm flex flex-col h-full overflow-hidden" id="workspace-details-canvas">
                 {(() => {
